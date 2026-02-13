@@ -1,63 +1,87 @@
-# Stonecraft-template
+# Nick Hider
 
-Set up a new multi-loader, multi-version mod project with Stonecraft.
+Client-side privacy mod for Minecraft that masks player names and skins in common vanilla client paths.
 
-- [ ] Update the gradle.properties file with your mod details
-- [ ] Update the settings.gradle.kts file with the versions you want to support and the mod name on the bottom
-- [ ] Rename the group folders in the src folder to match your mod.group
-- [ ] Rename the `yourmodid.accesswidener` file in `src/main/resources` to match your actual mod.id
-- [ ] Update the .releaserc.json file's discord notification section with your mod details - or remove the section if you don't want it
-- [ ] Check if the java version is what you want it to be in `.github/workflows/build.yml` (`java-version: 21`)
-- [ ] Check if you need the datagen step in the `.github/workflows/build.yml` file. If you don't, remove it.
-- [ ] If you're not running gametests (which you should), then remove all references to `chiseledGameTest` in the `.github/workflows/build.yml` file
-- [ ] Set up the environment variables in GitHub
+Copyright (c) 2026 przxmus
 
-## Bootstrap with GitHub Actions
+## Current Support
 
-The template comes with the `.github/workflows/bootstrap.yml` file that automates the above steps for you.
-Just naviate to the Actions tab of your repository and run the `🪄 Initialise Stonecraft template` workflow manually.
+- Minecraft: `1.20.1`
+- Loader: Forge `47.4.15`
+- Mod version: `0.0.1`
 
-## Environment Variables
+Roadmap: the project is structured for future MultiLoader/MultiVersion expansion (Fabric/NeoForge + more MC versions), but this release targets Forge 1.20.1 only.
 
-- `GH_TOKEN` **Secret** - Your Personal GitHub token
-- `MODRINTH_ID` **Variable** - Your Modrinth mod ID
-- `MODRINTH_TOKEN` **Secret** - Your Modrinth API token
-- `CURSEFORGE_ID` **Variable** - Your Curseforge mod ID
-- `CURSEFORGE_TOKEN` **Secret** - Your Curseforge API token
-- `CURSEFORGE_SLUG` **Secret** - Your Curseforge mod slug
-- `DISCORD_WEBHOOK` **Secret** - Your Discord webhook URL to use for notifications. This needs to be a bot token, not a user token.
+## What It Does
 
-## GitHub Token How-To
+- Hides/replaces local player name.
+- Hides/replaces local player skin.
+- Hides/replaces other players' names (template with `[ID]` token).
+- Hides/replaces other players' skins (shared configured source).
 
-This is only needed if you're planning on releasing to Github, which is the default of this template.
+Settings are available in-game:
+- Forge Mod List config screen
+- Keybind entry (`Open Nick Hider Settings`, default unbound)
 
-1. Go to your [GitHub settings](https://github.com/settings/tokens)
-2. Click on `Generate new token`
-3. I recommend using a classic token, but make sure to use a new one for each repo. Never reuse tokens to reduce the risk of a token being leaked.
-4. Give the token a name that makes sense to you (usually the repo name)
-5. Select the `repo` scope and whatever else you need. If you're not sure, just select `repo`.
+## Settings
 
-## Discord Webhook How-To
+The config exposes only these fields:
 
-### Getting a bot token
+- `Hide Local Name`
+- `Hide Local Skin`
+- `Hide Other Names`
+- `Hide Other Skins`
+- `Local Replacement Name`
+- `Local Skin Source Username`
+- `Other Players Name Template`
+- `Other Players Skin Source Username`
 
-1. Go to Discord's developer portal https://discord.com/developers/applications
-2. Create a new application if you don't have one already
-3. Go to the `Bot` section of the application and copy the token and paste it somewhere temporarily (I recommend secure notes in your preferred password manager)
+## Installation
 
-### Setting up the discord server
+1. Open the repository Releases page.
+2. Download the jar asset for the target release (direct `.jar` file, not a zip bundle).
+3. Put the jar into your Minecraft `mods` directory for Forge `1.20.1`.
+4. Start the game and open the Nick Hider config in Mod List.
 
-1. Invite the bot to your server where you want it to post notifications
-2. Go to the server settings and create a channel for the bot to post notifications in
-3. Go to your personal discord settings and enable developer mode in the Advanced section
-4. Right-click the channel you want the bot to post in and click `Copy Channel ID`
+## Privacy Scope
 
-### Setting up the webhook
+Nick Hider applies aggressive client-side masking on vanilla rendering/text paths.  
+This is best-effort behavior, not a mathematical guarantee across every third-party mod renderer/UI pipeline.
 
-1. Open up Postman or any other tool you're comfortable with to make a POST request
-2. Set the URL to `https://discord.com/api/v9/channels/{channel_id}/webhooks`
-3. Set the `Authorization` header to `Bot {your_bot_token}`
-4. Set the `Content-Type` header to `application/json`
-5. Set the body to `{"name": "Your Webhook Name"}`
-6. Send the request
-7. Copy the webhook URL from the response and paste it into the `DISCORD_WEBHOOK` environment variable
+## Icon Compatibility
+
+The mod icon is wired through loader metadata using `assets/nickhider/icon.png`:
+
+- Forge `mods.toml` (`logoFile`)
+- NeoForge `neoforge.mods.toml` (`logoFile`)
+- Fabric `fabric.mod.json` (`icon`)
+
+Launchers and tooling (for example Prism Launcher) may render mod icons differently depending on their metadata support. This project configures standard metadata paths for best-effort compatibility.
+
+## Building From Source
+
+Requirements:
+
+- Java 21 for Gradle/Stonecraft runtime
+- Git
+
+Build:
+
+```bash
+./gradlew clean build
+```
+
+Notes:
+
+- The build runtime uses Java 21 because Stonecraft requires it.
+- Produced mod classes are compiled to Java 17 bytecode (`options.release = 17`) for runtime compatibility.
+
+## Releases
+
+- CI build workflow uploads jar artifacts for each run.
+- Manual release workflow creates a draft GitHub Release and uploads all built jars as direct release assets.
+
+## License
+
+Licensed under the GNU Affero General Public License v3.0 (AGPLv3).  
+See `/LICENSE` for full text.

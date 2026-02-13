@@ -4,9 +4,11 @@
   "version": "${version}",
 
   "name": "${name}",
+  "icon": "assets/${id}/icon.png",
   "description": "${description}",
   "authors": [],
   "contact": {},
+  "license": "GNU Affero General Public License v3.0",
 
   "environment": "*",
   "entrypoints": {

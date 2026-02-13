@@ -1,0 +1,147 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (semver), e.g. 0.0.1"
+        required: true
+        type: string
+      release_name:
+        description: "GitHub release title"
+        required: true
+        type: string
+      release_notes:
+        description: "Release notes (Markdown)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark this release as prerelease"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard main branch only
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "This workflow can be run only from main. Current ref: ${GITHUB_REF}"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 21 (Gradle runtime)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            versions/*.properties
+            *.properties
+            *.gradle.kts
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          validate-wrappers: true
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Validate release inputs
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version '${VERSION}'. Expected semver, e.g. 0.0.1 or 0.0.1-rc.1"
+            exit 1
+          fi
+          TAG="v${VERSION}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "Tag ${TAG} already exists locally."
+            exit 1
+          fi
+          if git ls-remote --tags origin "${TAG}" | grep -q "${TAG}$"; then
+            echo "Tag ${TAG} already exists on origin."
+            exit 1
+          fi
+
+      - name: Bump version in gradle.properties
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          sed -i "s/^mod.version=.*/mod.version=${VERSION}/" gradle.properties
+          if git diff --quiet -- gradle.properties; then
+            echo "mod.version is already ${VERSION}; release bump must change gradle.properties."
+            exit 1
+          fi
+
+      - name: Commit and tag release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gradle.properties
+          git commit -m "chore(release): ${TAG}"
+          git tag "${TAG}"
+          git push origin HEAD:main
+          git push origin "${TAG}"
+
+      - name: Build release artifacts
+        run: ./gradlew --stacktrace clean build
+
+      - name: Prepare release notes and asset list
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          printf "%s\n" "${RELEASE_NOTES}" > release_notes.md
+          find build/libs versions -type f -name "*.jar" | sort -u > release_assets.txt
+          if [ ! -s release_assets.txt ]; then
+            echo "No jar assets found."
+            exit 1
+          fi
+          echo "Assets to upload:"
+          cat release_assets.txt
+
+      - name: Create draft GitHub release with jar assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_NAME: ${{ inputs.release_name }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          ARGS=()
+          if [ "${PRERELEASE}" = "true" ]; then
+            ARGS+=(--prerelease)
+          fi
+          mapfile -t ASSETS < release_assets.txt
+          gh release create "${TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft \
+            --title "${RELEASE_NAME}" \
+            --notes-file release_notes.md \
+            "${ARGS[@]}" \
+            "${ASSETS[@]}"

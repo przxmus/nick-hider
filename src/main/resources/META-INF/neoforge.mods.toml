@@ -1,12 +1,13 @@
 modLoader = "javafml"
 loaderVersion = "*"
 issueTrackerURL = "https://github.com/przxmus/nick-hider/issues"
-license = "MIT"
+license = "GNU Affero General Public License v3.0"
 
 [[mods]]
 modId = "${id}"
 version = "${version}"
 displayName = "${name}"
+logoFile = "assets/${id}/icon.png"
 authors = "przxmus"
 description = '''
 ${description}
