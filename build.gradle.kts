@@ -42,6 +42,7 @@ tasks.withType<Test>().configureEach {
 }
 
 tasks.withType<JavaCompile>().configureEach {
+    options.release.set(17)
     if (name == "compileTestJava" && tasks.names.contains("generatePackMCMetaJson")) {
         dependsOn(tasks.named("generatePackMCMetaJson"))
     }
