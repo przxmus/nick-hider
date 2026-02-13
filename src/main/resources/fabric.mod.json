@@ -11,7 +11,7 @@
   "environment": "*",
   "entrypoints": {
     "main": [
-      "${group}.ExampleMod"
+      "${group}.NickHiderMod"
     ]
   },
   "depends": {

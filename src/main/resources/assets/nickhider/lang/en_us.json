@@ -1,0 +1,14 @@
+{
+  "key.categories.nickhider": "Nick Hider",
+  "key.nickhider.open_config": "Open Nick Hider Settings",
+  "nickhider.config.title": "Nick Hider Settings",
+  "nickhider.config.hide_local_name": "Hide Local Name",
+  "nickhider.config.hide_local_skin": "Hide Local Skin",
+  "nickhider.config.hide_other_names": "Hide Other Names",
+  "nickhider.config.hide_other_skins": "Hide Other Skins",
+  "nickhider.config.local_name": "Local Replacement Name",
+  "nickhider.config.local_skin_user": "Local Skin Source Username",
+  "nickhider.config.others_name_template": "Other Players Name Template",
+  "nickhider.config.others_skin_user": "Other Players Skin Source Username",
+  "nickhider.config.save": "Save"
+}
