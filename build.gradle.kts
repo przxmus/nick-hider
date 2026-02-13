@@ -1,6 +1,7 @@
 import gg.meza.stonecraft.mod
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.jvm.tasks.Jar
 
 plugins {
     id("gg.meza.stonecraft")
@@ -30,6 +31,14 @@ publishMods {
     }
 }
 
+loom {
+    runs {
+        configureEach {
+            property("mixin.config", "nickhider.mixins.json")
+        }
+    }
+}
+
 dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -39,6 +48,10 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+}
+
+tasks.withType<Jar>().configureEach {
+    manifest.attributes["MixinConfigs"] = "nickhider.mixins.json"
 }
 
 tasks.withType<JavaCompile>().configureEach {
