@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "pl.przxmus.nickhider.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "nickhider.refmap.json",
+  "client": [
+    "PlayerInfoMixin",
+    "PlayerTabOverlayMixin",
+    "StringDecomposerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
