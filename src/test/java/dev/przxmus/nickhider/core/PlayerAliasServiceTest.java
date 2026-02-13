@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.core;
+package dev.przxmus.nickhider.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;

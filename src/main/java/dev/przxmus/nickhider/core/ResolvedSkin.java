@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.core;
+package dev.przxmus.nickhider.core;
 
 import net.minecraft.resources.ResourceLocation;
 

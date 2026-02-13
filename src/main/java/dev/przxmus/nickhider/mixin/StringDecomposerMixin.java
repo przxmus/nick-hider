@@ -1,10 +1,10 @@
-package pl.przxmus.nickhider.mixin;
+package dev.przxmus.nickhider.mixin;
 
 import net.minecraft.util.StringDecomposer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
-import pl.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.NickHider;
 
 @Mixin(StringDecomposer.class)
 public class StringDecomposerMixin {

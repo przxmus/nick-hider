@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.core;
+package dev.przxmus.nickhider.core;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -32,7 +32,7 @@ import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.StringUtil;
 import com.mojang.blaze3d.platform.NativeImage;
-import pl.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.NickHider;
 
 public final class SkinResolutionService {
     private static final Gson GSON = new Gson();

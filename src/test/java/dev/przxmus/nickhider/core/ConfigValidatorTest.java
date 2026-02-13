@@ -1,11 +1,11 @@
-package pl.przxmus.nickhider.core;
+package dev.przxmus.nickhider.core;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
-import pl.przxmus.nickhider.config.ConfigValidator;
-import pl.przxmus.nickhider.config.PrivacyConfig;
+import dev.przxmus.nickhider.config.ConfigValidator;
+import dev.przxmus.nickhider.config.PrivacyConfig;
 
 class ConfigValidatorTest {
     @Test

@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.mixin;
+package dev.przxmus.nickhider.mixin;
 
 import com.mojang.authlib.GameProfile;
 import net.minecraft.client.gui.components.PlayerTabOverlay;
@@ -8,7 +8,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import pl.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.NickHider;
 
 @Mixin(PlayerTabOverlay.class)
 public class PlayerTabOverlayMixin {

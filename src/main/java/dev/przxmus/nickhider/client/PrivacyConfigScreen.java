@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.client;
+package dev.przxmus.nickhider.client;
 
 import java.util.List;
 import net.minecraft.ChatFormatting;
@@ -9,9 +9,9 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
-import pl.przxmus.nickhider.NickHider;
-import pl.przxmus.nickhider.config.ConfigValidator;
-import pl.przxmus.nickhider.config.PrivacyConfig;
+import dev.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.config.ConfigValidator;
+import dev.przxmus.nickhider.config.PrivacyConfig;
 
 public final class PrivacyConfigScreen extends Screen {
     private final Screen parent;

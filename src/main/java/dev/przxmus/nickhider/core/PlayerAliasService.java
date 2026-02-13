@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.core;
+package dev.przxmus.nickhider.core;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -19,8 +19,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import pl.przxmus.nickhider.NickHider;
-import pl.przxmus.nickhider.config.PrivacyConfig;
+import dev.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.config.PrivacyConfig;
 
 public final class PlayerAliasService {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();

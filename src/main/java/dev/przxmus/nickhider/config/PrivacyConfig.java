@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.config;
+package dev.przxmus.nickhider.config;
 
 public final class PrivacyConfig {
     public boolean hideLocalName;

@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.config;
+package dev.przxmus.nickhider.config;
 
 import java.util.ArrayList;
 import java.util.List;

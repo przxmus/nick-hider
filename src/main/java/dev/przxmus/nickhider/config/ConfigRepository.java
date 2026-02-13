@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.config;
+package dev.przxmus.nickhider.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import pl.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.NickHider;
 
 public final class ConfigRepository {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();

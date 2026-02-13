@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.client;
+package dev.przxmus.nickhider.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
@@ -11,7 +11,7 @@ import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
-import pl.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.NickHider;
 
 public final class NickHiderForgeClient {
     private static final KeyMapping OPEN_CONFIG_KEY =

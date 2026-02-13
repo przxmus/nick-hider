@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.core;
+package dev.przxmus.nickhider.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import pl.przxmus.nickhider.config.PrivacyConfig;
+import dev.przxmus.nickhider.config.PrivacyConfig;
 
 class TextSanitizationFlowTest {
     @TempDir

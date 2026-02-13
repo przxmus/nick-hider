@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.mixin;
+package dev.przxmus.nickhider.mixin;
 
 import com.mojang.authlib.GameProfile;
 import java.util.Optional;
@@ -9,8 +9,8 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import pl.przxmus.nickhider.NickHider;
-import pl.przxmus.nickhider.core.ResolvedSkin;
+import dev.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.core.ResolvedSkin;
 
 @Mixin(PlayerInfo.class)
 public abstract class PlayerInfoMixin {

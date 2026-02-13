@@ -1,14 +1,14 @@
-package pl.przxmus.nickhider;
+package dev.przxmus.nickhider;
 
 import com.mojang.logging.LogUtils;
 import java.nio.file.Path;
 import java.util.Objects;
 import org.slf4j.Logger;
-import pl.przxmus.nickhider.config.ConfigRepository;
-import pl.przxmus.nickhider.core.PlayerAliasService;
-import pl.przxmus.nickhider.core.PrivacyRuntimeState;
-import pl.przxmus.nickhider.core.SkinResolutionService;
-import pl.przxmus.nickhider.core.TextSanitizer;
+import dev.przxmus.nickhider.config.ConfigRepository;
+import dev.przxmus.nickhider.core.PlayerAliasService;
+import dev.przxmus.nickhider.core.PrivacyRuntimeState;
+import dev.przxmus.nickhider.core.SkinResolutionService;
+import dev.przxmus.nickhider.core.TextSanitizer;
 
 public final class NickHider {
     public static final String MOD_ID = "nickhider";

@@ -1,8 +1,8 @@
-package pl.przxmus.nickhider;
+package dev.przxmus.nickhider;
 
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLPaths;
-import pl.przxmus.nickhider.client.NickHiderForgeClient;
+import dev.przxmus.nickhider.client.NickHiderForgeClient;
 
 @Mod(NickHider.MOD_ID)
 public final class NickHiderMod {

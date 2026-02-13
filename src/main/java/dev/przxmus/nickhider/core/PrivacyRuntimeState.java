@@ -1,11 +1,11 @@
-package pl.przxmus.nickhider.core;
+package dev.przxmus.nickhider.core;
 
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
-import pl.przxmus.nickhider.config.ConfigRepository;
-import pl.przxmus.nickhider.config.PrivacyConfig;
+import dev.przxmus.nickhider.config.ConfigRepository;
+import dev.przxmus.nickhider.config.PrivacyConfig;
 
 public final class PrivacyRuntimeState {
     private final ConfigRepository configRepository;

@@ -1,4 +1,4 @@
-package pl.przxmus.nickhider.core;
+package dev.przxmus.nickhider.core;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -6,7 +6,7 @@ import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.LocalPlayer;
-import pl.przxmus.nickhider.config.PrivacyConfig;
+import dev.przxmus.nickhider.config.PrivacyConfig;
 
 public final class TextSanitizer {
     private final PlayerAliasService aliasService;
