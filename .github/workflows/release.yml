@@ -12,8 +12,8 @@ on:
         required: true
         type: string
       release_notes:
-        description: "Release notes (Markdown)"
-        required: true
+        description: "Optional short intro note (prepended to auto-generated notes)"
+        required: false
         type: string
       prerelease:
         description: "Mark this release as prerelease"
@@ -110,13 +110,10 @@ jobs:
       - name: Build release artifacts
         run: ./gradlew --stacktrace clean build
 
-      - name: Prepare release notes and asset list
-        env:
-          RELEASE_NOTES: ${{ inputs.release_notes }}
+      - name: Prepare release assets
         run: |
           set -euo pipefail
-          printf "%s\n" "${RELEASE_NOTES}" > release_notes.md
-          find build/libs versions -type f -name "*.jar" | sort -u > release_assets.txt
+          find . -type f -path "*/build/libs/*.jar" | sort -u > release_assets.txt
           if [ ! -s release_assets.txt ]; then
             echo "No jar assets found."
             exit 1
@@ -129,6 +126,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           RELEASE_NAME: ${{ inputs.release_name }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
@@ -137,11 +135,15 @@ jobs:
           if [ "${PRERELEASE}" = "true" ]; then
             ARGS+=(--prerelease)
           fi
+          ARGS+=(--generate-notes)
+          if [ -n "${RELEASE_NOTES}" ]; then
+            printf "%s\n" "${RELEASE_NOTES}" > release_notes.md
+            ARGS+=(--notes-file release_notes.md)
+          fi
           mapfile -t ASSETS < release_assets.txt
           gh release create "${TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
             --draft \
             --title "${RELEASE_NAME}" \
-            --notes-file release_notes.md \
             "${ARGS[@]}" \
             "${ASSETS[@]}"
