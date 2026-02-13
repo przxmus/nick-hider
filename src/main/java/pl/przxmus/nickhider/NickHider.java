@@ -1,0 +1,38 @@
+package pl.przxmus.nickhider;
+
+import com.mojang.logging.LogUtils;
+import java.nio.file.Path;
+import java.util.Objects;
+import org.slf4j.Logger;
+import pl.przxmus.nickhider.config.ConfigRepository;
+import pl.przxmus.nickhider.core.PlayerAliasService;
+import pl.przxmus.nickhider.core.PrivacyRuntimeState;
+import pl.przxmus.nickhider.core.SkinResolutionService;
+import pl.przxmus.nickhider.core.TextSanitizer;
+
+public final class NickHider {
+    public static final String MOD_ID = "nickhider";
+    public static final Logger LOGGER = LogUtils.getLogger();
+
+    private static PrivacyRuntimeState runtimeState;
+
+    private NickHider() {}
+
+    public static synchronized void bootstrap(Path configDir) {
+        if (runtimeState != null) {
+            return;
+        }
+
+        ConfigRepository configRepository = new ConfigRepository(configDir.resolve(MOD_ID + ".json"));
+        PlayerAliasService aliasService = new PlayerAliasService(configDir.resolve(MOD_ID + "-ids.json"));
+        SkinResolutionService skinResolutionService = new SkinResolutionService(configDir.resolve(MOD_ID + "-cache").resolve("skins"));
+        TextSanitizer textSanitizer = new TextSanitizer(aliasService);
+
+        runtimeState = new PrivacyRuntimeState(configRepository, aliasService, skinResolutionService, textSanitizer);
+        runtimeState.reloadConfig();
+    }
+
+    public static PrivacyRuntimeState runtime() {
+        return Objects.requireNonNull(runtimeState, "NickHider runtime is not bootstrapped");
+    }
+}
