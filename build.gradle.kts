@@ -1,5 +1,6 @@
 import gg.meza.stonecraft.mod
 import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.compile.JavaCompile
 
 plugins {
     id("gg.meza.stonecraft")
@@ -30,13 +31,18 @@ publishMods {
 }
 
 dependencies {
-    compileOnly("org.spongepowered:mixin:0.8.5")
-    annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
-
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    if (name == "compileTestJava" && tasks.names.contains("generatePackMCMetaJson")) {
+        dependsOn(tasks.named("generatePackMCMetaJson"))
+    }
 }
