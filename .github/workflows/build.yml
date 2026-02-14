@@ -17,7 +17,110 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ci-lite:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Java 21 (Gradle runtime)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          validate-wrappers: true
+          cache-read-only: true
+          cache-cleanup: on-success
+          gradle-home-cache-excludes: |
+            caches/*/transforms-*
+            caches/*/executionHistory
+            caches/*/fileHashes
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Resolve representative projects
+        id: resolve_smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TASKS=()
+          PROJECTS=()
+
+          for loader in fabric forge neoforge; do
+            mapfile -t projects < <(
+              grep -E '^[[:space:]]*mc\(' settings.gradle.kts \
+                | grep "\"${loader}\"" \
+                | sed -E "s/^[^\"]*\"([^\"]+)\".*/\1-${loader}/" \
+                | sort -V
+            )
+
+            # Fallback for unexpected settings format changes.
+            if [ "${#projects[@]}" -eq 0 ]; then
+              echo "Could not resolve projects from settings.gradle.kts for ${loader}; falling back to Gradle project listing."
+              mapfile -t projects < <(
+                ./gradlew -q projects \
+                  | grep -oE "1\\.[0-9.]+-${loader}" \
+                  | sort -Vu
+              )
+            fi
+
+            if [ "${#projects[@]}" -eq 0 ]; then
+              echo "No projects found for loader ${loader}."
+              exit 1
+            fi
+
+            latest_project="${projects[-1]}"
+            PROJECTS+=("${latest_project}")
+            TASKS+=(":${latest_project}:build")
+          done
+
+          echo "Smoke-check projects:"
+          for project in "${PROJECTS[@]}"; do
+            printf ' - %s\n' "${project}"
+          done
+
+          {
+            echo "projects=${PROJECTS[*]}"
+            echo "gradle_tasks=${TASKS[*]}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Build representative projects (smoke)
+        run: ./gradlew --stacktrace --parallel -PmatrixTests=false ${{ steps.resolve_smoke.outputs.gradle_tasks }}
+
+      - name: Verify jars exist for representative projects
+        env:
+          PROJECTS: ${{ steps.resolve_smoke.outputs.projects }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          missing=0
+
+          for project in ${PROJECTS}; do
+            jars=(versions/${project}/build/libs/*.jar)
+            if [ "${#jars[@]}" -eq 0 ]; then
+              echo "Missing jar output for ${project}"
+              missing=1
+              continue
+            fi
+            echo "Jars for ${project}:"
+            printf ' - %s\n' "${jars[@]}"
+          done
+
+          if [ "${missing}" -ne 0 ]; then
+            echo "One or more representative projects did not produce jars."
+            exit 1
+          fi
+
   resolve_shards:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       matrix_json: ${{ steps.resolve.outputs.matrix_json }}
@@ -154,6 +257,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
   build:
+    if: github.event_name == 'workflow_dispatch'
     needs: resolve_shards
     name: build (${{ matrix.loader }} s${{ matrix.shard_index }})
     runs-on: ubuntu-latest
@@ -234,8 +338,8 @@ jobs:
           path: versions/*-${{ matrix.loader }}/build/reports/**/*
 
   ci-summary:
+    if: github.event_name == 'workflow_dispatch' && always()
     needs: [resolve_shards, build]
-    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Print shard summary
