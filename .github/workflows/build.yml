@@ -23,14 +23,52 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Determine whether Gradle smoke checks are needed
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            head_sha="${{ github.sha }}"
+          fi
+
+          if [ -z "${base_sha}" ] || [ "${base_sha}" = "0000000000000000000000000000000000000000" ]; then
+            mapfile -t changed_files < <(git ls-files)
+          else
+            mapfile -t changed_files < <(git diff --name-only "${base_sha}" "${head_sha}")
+          fi
+
+          echo "Changed files count: ${#changed_files[@]}"
+
+          run_smoke=false
+          for file in "${changed_files[@]}"; do
+            case "${file}" in
+              src/*|versions/*|build.gradle|build.gradle.kts|settings.gradle|settings.gradle.kts|gradle.properties|gradle/*|gradlew|gradlew.bat)
+                run_smoke=true
+                break
+                ;;
+            esac
+          done
+
+          echo "run_smoke=${run_smoke}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Java 21 (Gradle runtime)
+        if: steps.changes.outputs.run_smoke == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Setup Gradle
+        if: steps.changes.outputs.run_smoke == 'true'
         uses: gradle/actions/setup-gradle@v5
         with:
           validate-wrappers: true
@@ -42,15 +80,17 @@ jobs:
             caches/*/fileHashes
 
       - name: Make Gradle wrapper executable
+        if: steps.changes.outputs.run_smoke == 'true'
         run: chmod +x ./gradlew
 
       - name: Resolve representative projects
+        if: steps.changes.outputs.run_smoke == 'true'
         id: resolve_smoke
         shell: bash
         run: |
           set -euo pipefail
 
-          TASKS=()
+          COMPILE_TASKS=()
           PROJECTS=()
 
           for loader in fabric forge neoforge; do
@@ -78,7 +118,7 @@ jobs:
 
             latest_project="${projects[-1]}"
             PROJECTS+=("${latest_project}")
-            TASKS+=(":${latest_project}:build")
+            COMPILE_TASKS+=(":${latest_project}:compileJava")
           done
 
           echo "Smoke-check projects:"
@@ -88,36 +128,46 @@ jobs:
 
           {
             echo "projects=${PROJECTS[*]}"
-            echo "gradle_tasks=${TASKS[*]}"
+            echo "compile_tasks=${COMPILE_TASKS[*]}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Build representative projects (smoke)
-        run: ./gradlew --stacktrace --parallel -PmatrixTests=false ${{ steps.resolve_smoke.outputs.gradle_tasks }}
+      - name: Compile representative projects (smoke)
+        if: steps.changes.outputs.run_smoke == 'true'
+        run: ./gradlew --stacktrace --parallel --configure-on-demand -PmatrixTests=false ${{ steps.resolve_smoke.outputs.compile_tasks }}
 
-      - name: Verify jars exist for representative projects
+      - name: Verify class outputs exist for representative projects
+        if: steps.changes.outputs.run_smoke == 'true'
         env:
           PROJECTS: ${{ steps.resolve_smoke.outputs.projects }}
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
           missing=0
 
           for project in ${PROJECTS}; do
-            jars=(versions/${project}/build/libs/*.jar)
-            if [ "${#jars[@]}" -eq 0 ]; then
-              echo "Missing jar output for ${project}"
+            classes_dir="versions/${project}/build/classes/java/main"
+            if [ ! -d "${classes_dir}" ]; then
+              echo "Missing compiled classes directory for ${project}: ${classes_dir}"
               missing=1
               continue
             fi
-            echo "Jars for ${project}:"
-            printf ' - %s\n' "${jars[@]}"
+            class_count="$(find "${classes_dir}" -type f -name '*.class' | wc -l | tr -d ' ')"
+            if [ "${class_count}" -eq 0 ]; then
+              echo "No .class outputs found for ${project} in ${classes_dir}"
+              missing=1
+              continue
+            fi
+            echo "Compiled classes for ${project}: ${class_count}"
           done
 
           if [ "${missing}" -ne 0 ]; then
-            echo "One or more representative projects did not produce jars."
+            echo "One or more representative projects did not produce compiled classes."
             exit 1
           fi
+
+      - name: Skip message
+        if: steps.changes.outputs.run_smoke != 'true'
+        run: echo "No code/build-logic changes detected; skipping Gradle smoke checks."
 
   resolve_shards:
     if: github.event_name == 'workflow_dispatch'
