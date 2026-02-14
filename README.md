@@ -8,15 +8,14 @@ Client-side privacy masking for Minecraft player names, skins, and capes.
 
 <p align="center">
   <img alt="Minecraft" src="https://img.shields.io/badge/Minecraft-1.20%20to%201.21.11-2ea043">
-  <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
   <img alt="Loaders" src="https://img.shields.io/badge/Loaders-Fabric%20%7C%20Forge%20%7C%20NeoForge-orange">
   <img alt="License" src="https://img.shields.io/badge/License-AGPL--3.0-red">
 </p>
 
 ## Download
 
-- [Download on Modrinth](https://modrinth.com/mod/<todo-project-slug>)
-- [Download on CurseForge](https://www.curseforge.com/minecraft/mc-mods/<todo-project-slug>)
+- [Download on Modrinth](https://modrinth.com/project/tRP3LbwW)
+- [Download on CurseForge](https://curseforge.com/minecraft/mc-mods/nick-hider)
 - [Download from GitHub Releases](https://github.com/przxmus/nick-hider/releases)
 
 > Maintainer note: replace the Modrinth and CurseForge placeholder slugs after public project pages are finalized.
@@ -39,18 +38,18 @@ Nick Hider masks player identity details in common vanilla client rendering and 
 
 ## Features At A Glance
 
-| Area | Behavior |
-|---|---|
-| Local name | Replaces your local displayed name |
-| Local skin | Replaces your local rendered skin |
-| Local cape | Replaces your local cape and cape-based elytra texture |
-| Other names | Template-based replacement with `[ID]` token support |
-| Other skins/capes | Shared configured source usernames |
-| Runtime toggle | Global `Enable Nick Hider` on/off switch |
+| Area              | Behavior                                               |
+| ----------------- | ------------------------------------------------------ |
+| Local name        | Replaces your local displayed name                     |
+| Local skin        | Replaces your local rendered skin                      |
+| Local cape        | Replaces your local cape and cape-based elytra texture |
+| Other names       | Template-based replacement with `[ID]` token support   |
+| Other skins/capes | Shared configured source usernames                     |
+| Runtime toggle    | Global `Enable Nick Hider` on/off switch               |
 
 ## Compatibility
 
-- Mod version: `0.1.0`
+- Mod version: `0.1.1`
 - Minecraft range: `1.20` to `1.21.11` (inclusive)
 - Loader support policy: Fabric for all supported versions, Forge where Forge exists, and NeoForge where stable NeoForge support exists.
 
@@ -106,12 +105,6 @@ Run tests:
 ```bash
 ./gradlew test
 ```
-
-Project references:
-
-- Leak audit checklist: `docs/leak-audit-checklist.md`
-- Helper scripts: `scripts/`
-- CI and publish workflows: `.github/workflows/`
 
 ## License
 
