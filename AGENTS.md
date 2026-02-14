@@ -1,12 +1,12 @@
 # AGENTS.md
 
 ## Mission
-Maintain Nick Hider as a user-first Minecraft mod project. Keep documentation accurate and keep `README.md` continuously up to date without waiting for explicit user requests.
+Maintain Nick Hider as a user-first Minecraft mod project. Keep documentation accurate and keep both `README.md` and `README_PROVIDERS.md` continuously up to date without waiting for explicit user requests.
 
 ## Auto-Loaded Rules (Highest Priority In This Repo)
-1. Always evaluate whether `README.md` needs updates in every task that changes behavior, compatibility, metadata, distribution, setup, or docs.
-2. If any README-relevant fact changes, update `README.md` in the same task before finishing.
-3. Never leave stale version/support/install/config/link info in `README.md`.
+1. Always evaluate whether `README.md` and `README_PROVIDERS.md` need updates in every task that changes behavior, compatibility, metadata, distribution, setup, or docs.
+2. If any README-relevant fact changes, update both files in the same task before finishing (unless a section is intentionally provider-only or repo-only).
+3. Never leave stale version/support/install/config/link info in either README file.
 4. If uncertain whether README is impacted, assume yes and verify.
 
 ## Project Snapshot
@@ -23,6 +23,7 @@ Maintain Nick Hider as a user-first Minecraft mod project. Keep documentation ac
 
 ## README Ownership Policy
 Treat `README.md` as a maintained product page first, developer guide second.
+Treat `README_PROVIDERS.md` as a curated provider-facing variant with the same factual core.
 
 Required sections to preserve (unless user asks otherwise):
 1. Hero (name + value proposition)
@@ -38,7 +39,7 @@ Required sections to preserve (unless user asks otherwise):
 11. License and maintainer links
 
 ## README Auto-Maintenance Triggers
-Update `README.md` whenever changes touch any of these:
+Update both README files whenever changes touch any of these:
 - `gradle.properties` (`mod.version`, `mod.name`, `mod.description`)
 - Loader metadata files (`fabric.mod.json`, `mods.toml`, `neoforge.mods.toml`)
 - Minecraft version support or loader matrix
@@ -50,11 +51,12 @@ Update `README.md` whenever changes touch any of these:
 
 ## How To Maintain README (Execution Checklist)
 1. Read current `README.md`.
-2. Collect new facts from source-of-truth files above.
-3. Patch only what changed; keep user-facing tone and scannable structure.
-4. Verify links are valid or clearly marked placeholders.
-5. Ensure no contradictions between README and code/config metadata.
-6. If README is unaffected, explicitly state why in final response.
+2. Read current `README_PROVIDERS.md`.
+3. Collect new facts from source-of-truth files above.
+4. Patch only what changed; keep user-facing tone and scannable structure.
+5. Verify links are valid or clearly marked placeholders.
+6. Ensure no contradictions between README files and code/config metadata.
+7. If README files are unaffected, explicitly state why in final response.
 
 ## Content Quality Bar
 - Prefer concise bullets/tables over long prose.
@@ -69,6 +71,8 @@ Update `README.md` whenever changes touch any of these:
 
 ## Agent Behavior Notes
 - Do not wait for user prompt to maintain README; apply proactively.
+- Keep shared facts synchronized across both README files (version, compatibility range, loader support, config rules, core behavior).
+- Allow intentional differences: provider formatting, icon URL style, and section selection.
 - Do not remove placeholder download links unless real URLs are known.
 - Keep this file under 200 lines.
-- If future project structure changes, update this file first, then README.
+- If future project structure changes, update this file first, then both README files.
