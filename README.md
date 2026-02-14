@@ -114,6 +114,37 @@ Notes:
   - Java 17 for pre-`1.20.5` targets
   - Java 21 for `1.20.5+` targets
 
+## Semi-automated runClient checks
+
+Use:
+
+```bash
+bash scripts/runclient-notes.sh
+```
+
+Optional filters:
+
+```bash
+bash scripts/runclient-notes.sh --only '1.21.*-neoforge'
+bash scripts/runclient-notes.sh --from 1.20.6-fabric --to 1.21.1-neoforge
+```
+
+Behavior:
+
+- Detects all `1.*` Gradle subprojects dynamically (`./gradlew projects -q`).
+- Runs `runClient` one project at a time.
+- Stores full logs per project.
+- Extracts `<developer>` chat messages into a single Markdown notes file.
+- Deduplicates only same-event server/render duplicates (same timestamp + same message).
+- After each game closes, prompts for manual multiline notes; finish with `/done`.
+
+Output:
+
+- `runchecks/<run-id>/notes.md`
+- `runchecks/<run-id>/logs/<project>.log`
+- `runchecks/<run-id>/summary.tsv`
+- `runchecks/latest.txt` (last run id)
+
 ## Releases
 
 - CI build workflow uploads jar artifacts for each run.
