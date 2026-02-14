@@ -209,7 +209,11 @@ for idx in "${!projects[@]}"; do
 
   echo "[$((idx + 1))/$total] START $proj"
   set +e
-  ./gradlew --stacktrace ":${proj}:runClient" > "$log_file" 2>&1
+  (
+    ./gradlew --no-daemon --stacktrace ":${proj}:runClient" < /dev/null > "$log_file" 2>&1
+  ) &
+  gradle_pid=$!
+  wait "$gradle_pid"
   exit_code=$?
   set -e
 
