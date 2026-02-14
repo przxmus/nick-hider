@@ -21,8 +21,6 @@ fi
 only_pattern=""
 from_project=""
 to_project=""
-watchdog_idle_seconds="${WATCHDOG_IDLE_SECONDS:-30}"
-watchdog_hard_idle_seconds="${WATCHDOG_HARD_IDLE_SECONDS:-180}"
 
 collect_projects() {
   local input="$1"
@@ -53,26 +51,6 @@ sort_projects() {
       printf("%04d.%04d.%04d\t%s\t%s\n", major, minor, patch, loader, $0)
     }
   ' | sort | cut -f3-
-}
-
-file_mtime() {
-  local file="$1"
-  if stat -f %m "$file" >/dev/null 2>&1; then
-    stat -f %m "$file"
-    return
-  fi
-  stat -c %Y "$file"
-}
-
-log_has_shutdown_hint() {
-  local file="$1"
-  local tail_sample
-  tail_sample="$(tail -n 300 "$file" 2>/dev/null || true)"
-  if command -v rg >/dev/null 2>&1; then
-    printf '%s\n' "$tail_sample" | rg -q -m 1 "Stopping!|Shutting down|Process crashed|Game crashed|Saving and pausing game|Closing Server"
-    return
-  fi
-  printf '%s\n' "$tail_sample" | grep -q -m 1 -E "Stopping!|Shutting down|Process crashed|Game crashed|Saving and pausing game|Closing Server"
 }
 
 usage() {
@@ -223,61 +201,39 @@ for idx in "${!projects[@]}"; do
       if (seen[key] == 1) next
       seen[key] = 1
 
-      printf("  - `%s` %s\n", ts, msg) >> notes
+      if (ts == "unknown") {
+        printf("  - %s\n", msg) >> notes
+      } else {
+        printf("  - `%s` %s\n", ts, msg) >> notes
+      }
       fflush(notes)
     }
   ' &
   parser_pid=$!
 
   echo "[$((idx + 1))/$total] START $proj"
+  echo "[$((idx + 1))/$total] W trakcie: wpisz /next + Enter aby przejsc do kolejnego projektu."
   set +e
   (
     ./gradlew --no-daemon --stacktrace ":${proj}:runClient" < /dev/null > "$log_file" 2>&1
   ) &
   gradle_pid=$!
-
-  last_activity_epoch="$(date +%s)"
-  shutdown_hint_seen=false
-  forced_stop=false
-
+  user_skip=false
   while kill -0 "$gradle_pid" 2>/dev/null; do
-    sleep 1
-    now_epoch="$(date +%s)"
-    log_mtime="$(file_mtime "$log_file" 2>/dev/null || echo "$last_activity_epoch")"
-    if [[ "$log_mtime" -gt "$last_activity_epoch" ]]; then
-      last_activity_epoch="$log_mtime"
-      if [[ "$shutdown_hint_seen" == false ]] && log_has_shutdown_hint "$log_file"; then
-        shutdown_hint_seen=true
+    if IFS= read -r -t 1 cmd; then
+      if [[ "$cmd" == "/next" ]]; then
+        echo "[$((idx + 1))/$total] USER_SKIP $proj"
+        kill "$gradle_pid" 2>/dev/null || true
+        sleep 1
+        kill -9 "$gradle_pid" 2>/dev/null || true
+        user_skip=true
+        break
       fi
-    elif [[ "$shutdown_hint_seen" == false ]] && log_has_shutdown_hint "$log_file"; then
-      shutdown_hint_seen=true
-    fi
-
-    idle_seconds=$((now_epoch - last_activity_epoch))
-    if [[ "$shutdown_hint_seen" == true && "$idle_seconds" -ge "$watchdog_idle_seconds" ]]; then
-      echo "[$((idx + 1))/$total] watchdog: forcing next project for $proj (idle ${idle_seconds}s after shutdown hint)"
-      kill "$gradle_pid" 2>/dev/null || true
-      sleep 1
-      kill -9 "$gradle_pid" 2>/dev/null || true
-      forced_stop=true
-      break
-    fi
-
-    if [[ "$idle_seconds" -ge "$watchdog_hard_idle_seconds" ]]; then
-      echo "[$((idx + 1))/$total] watchdog: hard idle timeout for $proj (${idle_seconds}s), forcing stop"
-      kill "$gradle_pid" 2>/dev/null || true
-      sleep 1
-      kill -9 "$gradle_pid" 2>/dev/null || true
-      forced_stop=true
-      break
     fi
   done
 
   wait "$gradle_pid"
   exit_code=$?
-  if [[ "$forced_stop" == true && "$exit_code" -eq 0 ]]; then
-    exit_code=143
-  fi
   set -e
 
   cleanup_parser "$parser_pid"
@@ -285,7 +241,9 @@ for idx in "${!projects[@]}"; do
   end_ts="$(date '+%Y-%m-%d %H:%M:%S')"
   runtime_s="$(( $(date +%s) - start_epoch ))"
 
-  if [[ $exit_code -eq 0 ]]; then
+  if [[ "$user_skip" == true ]]; then
+    result="USER_SKIP"
+  elif [[ $exit_code -eq 0 ]]; then
     result="EXIT_0"
   else
     result="EXIT_${exit_code}"

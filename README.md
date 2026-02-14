@@ -136,6 +136,7 @@ Behavior:
 - Stores full logs per project.
 - Extracts `<developer>` chat messages into a single Markdown notes file.
 - Deduplicates only same-event server/render duplicates (same timestamp + same message).
+- While a project is running, type `/next` + Enter to force moving to the next project.
 - After each game closes, prompts for manual multiline notes; finish with `/done`.
 
 Output:
