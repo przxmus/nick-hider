@@ -4,6 +4,10 @@ import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.jvm.tasks.Jar
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 
+val matrixTestsEnabled = providers.gradleProperty("matrixTests")
+    .map { it.equals("true", ignoreCase = true) }
+    .orElse(false)
+
 fun requiresJava21ForMinecraft(version: String): Boolean {
     val parts = version.split('.')
     val major = parts.getOrNull(0)?.toIntOrNull() ?: return false
@@ -67,11 +71,31 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
-    useJUnitPlatform()
-    val targetJava = if (requiresJava21ForMinecraft(mod.minecraftVersion)) 21 else 17
-    javaLauncher.set(javaToolchains.launcherFor {
-        languageVersion.set(JavaLanguageVersion.of(targetJava))
-    })
+    if (matrixTestsEnabled.get()) {
+        useJUnitPlatform()
+        val targetJava = if (requiresJava21ForMinecraft(mod.minecraftVersion)) 21 else 17
+        javaLauncher.set(javaToolchains.launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(targetJava))
+        })
+    } else {
+        enabled = false
+    }
+}
+
+if (!matrixTestsEnabled.get()) {
+    val disabledMatrixTestTasks = setOf(
+        "testClasses",
+        "compileTestJava",
+        "processTestResources",
+        "stonecutterPrepareTest",
+        "stonecutterGenerateTest"
+    )
+
+    tasks.configureEach {
+        if (name in disabledMatrixTestTasks) {
+            enabled = false
+        }
+    }
 }
 
 tasks.withType<Jar>().configureEach {
