@@ -3,6 +3,19 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.jvm.tasks.Jar
 
+fun requiresJava21ForMinecraft(version: String): Boolean {
+    val parts = version.split('.')
+    val major = parts.getOrNull(0)?.toIntOrNull() ?: return false
+    val minor = parts.getOrNull(1)?.toIntOrNull() ?: return false
+    val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
+
+    if (major != 1) {
+        return false
+    }
+
+    return minor > 20 || (minor == 20 && patch >= 5)
+}
+
 plugins {
     id("gg.meza.stonecraft")
 }
@@ -55,7 +68,7 @@ tasks.withType<Jar>().configureEach {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.release.set(17)
+    options.release.set(if (requiresJava21ForMinecraft(mod.minecraftVersion)) 21 else 17)
     if (name == "compileTestJava" && tasks.names.contains("generatePackMCMetaJson")) {
         dependsOn(tasks.named("generatePackMCMetaJson"))
     }

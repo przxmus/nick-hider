@@ -19,3 +19,10 @@ mandatory = true
 versionRange = "[${minecraftVersion},)"
 ordering = "NONE"
 side = "CLIENT"
+
+[[dependencies.${id}]]
+modId = "neoforge"
+mandatory = true
+versionRange = "[${neoforgeVersion},)"
+ordering = "NONE"
+side = "CLIENT"
