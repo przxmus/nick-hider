@@ -18,6 +18,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        loader: [fabric, forge, neoforge]
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -33,28 +38,50 @@ jobs:
         with:
           validate-wrappers: true
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/beta' }}
+          cache-cleanup: always
+          gradle-home-cache-excludes: |
+            caches/*/transforms-*
+            caches/*/executionHistory
+            caches/*/fileHashes
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build
-        run: ./gradlew --stacktrace build -PmatrixTests=false
+      - name: Resolve loader projects
+        id: resolve_projects
+        env:
+          LOADER: ${{ matrix.loader }}
+        run: |
+          set -euo pipefail
+          PROJECTS="$(./gradlew -q projects | grep -oE "1\\.[0-9.]+-${LOADER}" | sort -Vu | xargs)"
+          if [ -z "${PROJECTS}" ]; then
+            echo "No projects found for loader ${LOADER}"
+            exit 1
+          fi
+          echo "Projects for ${LOADER}:"
+          for project in ${PROJECTS}; do
+            printf ' - %s\n' "${project}"
+          done
+          TASKS=()
+          for project in ${PROJECTS}; do
+            TASKS+=(":${project}:build")
+          done
+          echo "gradle_tasks=${TASKS[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Build loader shard
+        run: ./gradlew --stacktrace --parallel -PmatrixTests=false ${{ steps.resolve_projects.outputs.gradle_tasks }}
 
       - name: Upload jars
         uses: actions/upload-artifact@v4
         with:
-          name: jars-${{ github.sha }}
+          name: jars-${{ matrix.loader }}-${{ github.sha }}
           if-no-files-found: error
-          path: |
-            build/libs/*.jar
-            versions/**/build/libs/*.jar
+          path: versions/*-${{ matrix.loader }}/build/libs/*.jar
 
       - name: Upload reports (always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: reports-${{ github.sha }}
+          name: reports-${{ matrix.loader }}-${{ github.sha }}
           if-no-files-found: ignore
-          path: |
-            build/reports/**/*
-            versions/**/build/reports/**/*
+          path: versions/*-${{ matrix.loader }}/build/reports/**/*

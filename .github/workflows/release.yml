@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -43,20 +44,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Setup Java 21 (Gradle runtime)
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v5
-        with:
-          validate-wrappers: true
-
-      - name: Make Gradle wrapper executable
-        run: chmod +x ./gradlew
 
       - name: Validate release inputs
         env:
@@ -102,13 +89,67 @@ jobs:
           git push origin HEAD:main
           git push origin "${TAG}"
 
-      - name: Build release artifacts
-        run: ./gradlew --stacktrace build -PmatrixTests=false
+      - name: Wait for CI Build to finish for release commit
+        id: wait_ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Waiting for CI Build workflow for commit ${RELEASE_SHA}..."
+
+          RUN_ID=""
+          for _ in $(seq 1 120); do
+            RUN_ID="$(gh run list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --workflow build.yml \
+              --branch main \
+              --json databaseId,headSha,status,conclusion \
+              --limit 50 \
+              --jq ".[] | select(.headSha == \"${RELEASE_SHA}\") | .databaseId" \
+              | head -n1 || true)"
+
+            if [ -n "${RUN_ID}" ]; then
+              STATUS="$(gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json status --jq '.status')"
+              CONCLUSION="$(gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json conclusion --jq '.conclusion // \"\"')"
+              echo "CI Build run ${RUN_ID}: status=${STATUS} conclusion=${CONCLUSION}"
+
+              if [ "${STATUS}" = "completed" ]; then
+                if [ "${CONCLUSION}" = "success" ]; then
+                  echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+                  exit 0
+                fi
+                echo "CI Build failed for ${RELEASE_SHA} (conclusion: ${CONCLUSION})."
+                exit 1
+              fi
+            else
+              echo "CI Build run for ${RELEASE_SHA} not visible yet."
+            fi
+
+            sleep 30
+          done
+
+          echo "Timed out waiting for CI Build on ${RELEASE_SHA}."
+          exit 1
+
+      - name: Download release artifacts from CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ steps.wait_ci.outputs.run_id }}
+          RELEASE_SHA: ${{ steps.wait_ci.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          gh run download "${CI_RUN_ID}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir release-artifacts \
+            --pattern "jars-*-${RELEASE_SHA}"
 
       - name: Prepare release assets
         run: |
           set -euo pipefail
-          find . -type f -path "*/build/libs/*.jar" | sort -u > release_assets.txt
+          find release-artifacts -type f -name "*.jar" | sort -u > release_assets.txt
           if [ ! -s release_assets.txt ]; then
             echo "No jar assets found."
             exit 1

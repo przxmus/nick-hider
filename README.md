@@ -148,8 +148,8 @@ Output:
 
 ## Releases
 
-- CI build workflow uploads jar artifacts for each run.
-- Manual release workflow creates a draft GitHub Release and uploads all built jars as direct release assets.
+- CI build workflow runs in loader shards (`fabric`, `forge`, `neoforge`) and uploads jar artifacts per shard.
+- Manual release workflow reuses those CI artifacts for the tagged release commit instead of rebuilding jars.
 
 ## License
 
