@@ -53,17 +53,17 @@ jobs:
           LOADER: ${{ matrix.loader }}
         run: |
           set -euo pipefail
-          PROJECTS="$(./gradlew -q projects | grep -oE "1\\.[0-9.]+-${LOADER}" | sort -Vu | xargs)"
-          if [ -z "${PROJECTS}" ]; then
+          mapfile -t PROJECTS < <(find versions -mindepth 1 -maxdepth 1 -type d -name "*-${LOADER}" -printf '%f\n' | sort -V)
+          if [ "${#PROJECTS[@]}" -eq 0 ]; then
             echo "No projects found for loader ${LOADER}"
             exit 1
           fi
           echo "Projects for ${LOADER}:"
-          for project in ${PROJECTS}; do
+          for project in "${PROJECTS[@]}"; do
             printf ' - %s\n' "${project}"
           done
           TASKS=()
-          for project in ${PROJECTS}; do
+          for project in "${PROJECTS[@]}"; do
             TASKS+=(":${project}:build")
           done
           echo "gradle_tasks=${TASKS[*]}" >> "$GITHUB_OUTPUT"
