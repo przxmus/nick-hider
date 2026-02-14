@@ -26,3 +26,6 @@ mandatory = true
 versionRange = "[${neoforgeVersion},)"
 ordering = "NONE"
 side = "CLIENT"
+
+[[mixins]]
+config = "${id}.mixins.json"

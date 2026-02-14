@@ -16,6 +16,9 @@
       "${group}.NickHiderMod"
     ]
   },
+  "mixins": [
+    "${id}.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.16.0",
     "fabric-api": ">=${fabricVersion}",
