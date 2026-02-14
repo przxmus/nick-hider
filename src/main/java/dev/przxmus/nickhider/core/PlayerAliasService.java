@@ -36,6 +36,10 @@ public final class PlayerAliasService {
     }
 
     public synchronized Map<String, String> buildReplacementMap(UUID localPlayerUuid, Map<UUID, String> namesByUuid, PrivacyConfig config) {
+        if (!config.enabled) {
+            return Map.of();
+        }
+
         Map<String, String> replacements = new LinkedHashMap<>();
 
         for (Map.Entry<UUID, String> entry : namesByUuid.entrySet()) {

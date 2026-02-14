@@ -2,6 +2,7 @@ package dev.przxmus.nickhider.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -19,6 +20,7 @@ class TextSanitizationFlowTest {
     void replacementMapContainsLocalAndOthersAccordingToToggles() {
         PlayerAliasService service = new PlayerAliasService(tempDir.resolve("ids.json"));
         PrivacyConfig config = new PrivacyConfig();
+        config.enabled = true;
         config.hideLocalName = true;
         config.hideOtherNames = true;
 
@@ -33,5 +35,24 @@ class TextSanitizationFlowTest {
 
         assertEquals("Player", replacements.get("LocalPlayer"));
         assertFalse(replacements.get("RemotePlayer").isBlank());
+    }
+
+    @Test
+    void replacementMapIsEmptyWhenGlobalSwitchDisabled() {
+        PlayerAliasService service = new PlayerAliasService(tempDir.resolve("ids.json"));
+        PrivacyConfig config = new PrivacyConfig();
+        config.enabled = false;
+        config.hideLocalName = true;
+        config.hideOtherNames = true;
+
+        UUID local = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        UUID other = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+        Map<UUID, String> names = new LinkedHashMap<>();
+        names.put(local, "LocalPlayer");
+        names.put(other, "RemotePlayer");
+
+        Map<String, String> replacements = service.buildReplacementMap(local, names, config);
+        assertTrue(replacements.isEmpty());
     }
 }

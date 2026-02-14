@@ -27,4 +27,18 @@ class ConfigValidatorTest {
         config.othersNameTemplate = "Player";
         assertFalse(ConfigValidator.validate(config).isEmpty());
     }
+
+    @Test
+    void rejectsInvalidLocalCapeSource() {
+        PrivacyConfig config = new PrivacyConfig();
+        config.localCapeUser = "x";
+        assertFalse(ConfigValidator.validate(config).isEmpty());
+    }
+
+    @Test
+    void rejectsInvalidOthersCapeSource() {
+        PrivacyConfig config = new PrivacyConfig();
+        config.othersCapeUser = "bad-user";
+        assertFalse(ConfigValidator.validate(config).isEmpty());
+    }
 }
