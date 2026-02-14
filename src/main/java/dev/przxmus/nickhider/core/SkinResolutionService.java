@@ -115,7 +115,9 @@ public final class SkinResolutionService {
             Path capePngPath = capeTexturePath(normalizedUsername);
             Path elytraPngPath = elytraTexturePath(normalizedUsername);
 
-            Files.write(skinPngPath, skinBytes);
+            if (!writeProcessedSkinTexture(skinPngPath, skinBytes, normalizedUsername)) {
+                return;
+            }
             writeOptionalTexture(capePngPath, lookupResult.capeUrl);
             writeOptionalTexture(elytraPngPath, lookupResult.elytraUrl);
 
@@ -126,6 +128,24 @@ public final class SkinResolutionService {
             }
         } catch (Exception ex) {
             NickHider.LOGGER.warn("Failed to fetch skin for {}", normalizedUsername, ex);
+        }
+    }
+
+    private boolean writeProcessedSkinTexture(Path skinPath, byte[] skinBytes, String normalizedUsername) {
+        try {
+            NativeImage image = NativeImage.read(skinBytes);
+            NativeImage processed = processLegacySkin(image, normalizedUsername);
+            if (processed == null) {
+                return false;
+            }
+
+            try (processed) {
+                processed.writeToFile(skinPath);
+            }
+            return true;
+        } catch (IOException ex) {
+            NickHider.LOGGER.warn("Failed to process downloaded skin for {}", normalizedUsername, ex);
+            return false;
         }
     }
 
@@ -252,10 +272,15 @@ public final class SkinResolutionService {
 
         try (InputStream input = Files.newInputStream(pngPath)) {
             NativeImage image = NativeImage.read(input);
+            NativeImage processed = processLegacySkin(image, normalizedUsername);
+            if (processed == null) {
+                return null;
+            }
+
             ResourceLocation location = new ResourceLocation(NickHider.MOD_ID, "cached_skin/" + normalizedUsername);
             Minecraft minecraft = Minecraft.getInstance();
             TextureManager textureManager = minecraft.getTextureManager();
-            textureManager.register(location, new DynamicTexture(image));
+            textureManager.register(location, new DynamicTexture(processed));
 
             ResourceLocation capeLocation = registerOptionalTexture(capePath, "cached_cape/" + normalizedUsername, textureManager);
             ResourceLocation elytraLocation = registerOptionalTexture(elytraPath, "cached_elytra/" + normalizedUsername, textureManager);
@@ -296,6 +321,72 @@ public final class SkinResolutionService {
 
     private Path metaPath(String normalizedUsername) {
         return cacheDirectory.resolve(normalizedUsername + ".json");
+    }
+
+    private NativeImage processLegacySkin(NativeImage source, String normalizedUsername) {
+        int width = source.getWidth();
+        int height = source.getHeight();
+        if (width != 64 || (height != 32 && height != 64)) {
+            source.close();
+            NickHider.LOGGER.warn("Discarding incorrectly sized ({}x{}) skin texture for {}", width, height, normalizedUsername);
+            return null;
+        }
+
+        boolean legacy = height == 32;
+        NativeImage image = source;
+        if (legacy) {
+            NativeImage expanded = new NativeImage(64, 64, true);
+            expanded.copyFrom(source);
+            source.close();
+            image = expanded;
+
+            image.fillRect(0, 32, 64, 32, 0);
+            image.copyRect(4, 16, 16, 32, 4, 4, true, false);
+            image.copyRect(8, 16, 16, 32, 4, 4, true, false);
+            image.copyRect(0, 20, 24, 32, 4, 12, true, false);
+            image.copyRect(4, 20, 16, 32, 4, 12, true, false);
+            image.copyRect(8, 20, 8, 32, 4, 12, true, false);
+            image.copyRect(12, 20, 16, 32, 4, 12, true, false);
+            image.copyRect(44, 16, -8, 32, 4, 4, true, false);
+            image.copyRect(48, 16, -8, 32, 4, 4, true, false);
+            image.copyRect(40, 20, 0, 32, 4, 12, true, false);
+            image.copyRect(44, 20, -8, 32, 4, 12, true, false);
+            image.copyRect(48, 20, -16, 32, 4, 12, true, false);
+            image.copyRect(52, 20, -8, 32, 4, 12, true, false);
+        }
+
+        setNoAlpha(image, 0, 0, 32, 16);
+        if (legacy) {
+            doNotchTransparencyHack(image, 32, 0, 64, 32);
+        }
+        setNoAlpha(image, 0, 16, 64, 32);
+        setNoAlpha(image, 16, 48, 48, 64);
+        return image;
+    }
+
+    private static void doNotchTransparencyHack(NativeImage image, int minX, int minY, int maxX, int maxY) {
+        for (int x = minX; x < maxX; x++) {
+            for (int y = minY; y < maxY; y++) {
+                int pixel = image.getPixelRGBA(x, y);
+                if (((pixel >> 24) & 255) < 128) {
+                    return;
+                }
+            }
+        }
+
+        for (int x = minX; x < maxX; x++) {
+            for (int y = minY; y < maxY; y++) {
+                image.setPixelRGBA(x, y, image.getPixelRGBA(x, y) & 0x00FFFFFF);
+            }
+        }
+    }
+
+    private static void setNoAlpha(NativeImage image, int minX, int minY, int maxX, int maxY) {
+        for (int x = minX; x < maxX; x++) {
+            for (int y = minY; y < maxY; y++) {
+                image.setPixelRGBA(x, y, image.getPixelRGBA(x, y) | 0xFF000000);
+            }
+        }
     }
 
     private ResolvedSkin defaultSkin(UUID fallbackUuid) {
