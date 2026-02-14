@@ -1,9 +1,8 @@
 package dev.przxmus.nickhider.mixin;
 
 import com.mojang.authlib.GameProfile;
-import java.util.Objects;
 import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.client.resources.PlayerSkin;
+import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -17,41 +16,51 @@ public abstract class PlayerInfoMixin {
     @Shadow
     public abstract GameProfile getProfile();
 
-    @Inject(method = "getSkin", at = @At("RETURN"), cancellable = true)
-    private void nickhider$overrideSkin(CallbackInfoReturnable<PlayerSkin> cir) {
+    @Inject(method = "getSkinLocation", at = @At("HEAD"), cancellable = true)
+    private void nickhider$overrideSkinLocation(CallbackInfoReturnable<ResourceLocation> cir) {
         GameProfile profile = this.getProfile();
         if (profile == null || profile.getId() == null) {
             return;
         }
 
-        PlayerSkin original = cir.getReturnValue();
-        if (original == null) {
+        NickHider.runtime().replacementSkin(profile.getId())
+                .map(ResolvedSkin::textureLocation)
+                .ifPresent(cir::setReturnValue);
+    }
+
+    @Inject(method = "getModelName", at = @At("HEAD"), cancellable = true)
+    private void nickhider$overrideSkinModel(CallbackInfoReturnable<String> cir) {
+        GameProfile profile = this.getProfile();
+        if (profile == null || profile.getId() == null) {
             return;
         }
 
-        ResolvedSkin skinReplacement = NickHider.runtime().replacementSkin(profile.getId()).orElse(null);
-        boolean shouldOverrideCape = NickHider.runtime().shouldOverrideCape(profile.getId());
-        ResolvedSkin capeReplacement = NickHider.runtime().replacementCape(profile.getId()).orElse(null);
+        NickHider.runtime().replacementSkin(profile.getId())
+                .map(ResolvedSkin::modelName)
+                .ifPresent(cir::setReturnValue);
+    }
 
-        PlayerSkin.Model model = skinReplacement == null
-                ? original.model()
-                : PlayerSkin.Model.byName(skinReplacement.modelName());
-        var texture = skinReplacement == null ? original.texture() : skinReplacement.textureLocation();
-        var capeTexture = original.capeTexture();
-        var elytraTexture = original.elytraTexture();
-
-        if (shouldOverrideCape) {
-            capeTexture = capeReplacement == null ? null : capeReplacement.capeTextureLocation();
-            elytraTexture = capeReplacement == null ? null : capeReplacement.elytraTextureLocation();
-        }
-
-        if (Objects.equals(texture, original.texture())
-                && Objects.equals(capeTexture, original.capeTexture())
-                && Objects.equals(elytraTexture, original.elytraTexture())
-                && model == original.model()) {
+    @Inject(method = "getCapeLocation", at = @At("HEAD"), cancellable = true)
+    private void nickhider$overrideCapeLocation(CallbackInfoReturnable<ResourceLocation> cir) {
+        GameProfile profile = this.getProfile();
+        if (profile == null || profile.getId() == null || !NickHider.runtime().shouldOverrideCape(profile.getId())) {
             return;
         }
 
-        cir.setReturnValue(new PlayerSkin(texture, original.textureUrl(), capeTexture, elytraTexture, model, original.secure()));
+        NickHider.runtime().replacementCape(profile.getId())
+                .map(ResolvedSkin::capeTextureLocation)
+                .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
+    }
+
+    @Inject(method = "getElytraLocation", at = @At("HEAD"), cancellable = true)
+    private void nickhider$overrideElytraLocation(CallbackInfoReturnable<ResourceLocation> cir) {
+        GameProfile profile = this.getProfile();
+        if (profile == null || profile.getId() == null || !NickHider.runtime().shouldOverrideCape(profile.getId())) {
+            return;
+        }
+
+        NickHider.runtime().replacementCape(profile.getId())
+                .map(ResolvedSkin::elytraTextureLocation)
+                .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
     }
 }

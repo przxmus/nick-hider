@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "nickhider.refmap.json",
   "client": [
+    "EntityRendererNameTagMixin",
     "PlayerInfoMixin",
     "PlayerTabOverlayMixin",
     "StringDecomposerMixin"
