@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Collectors;
 import dev.przxmus.nickhider.NickHider;
 
 public final class ConfigRepository {
@@ -28,9 +29,9 @@ public final class ConfigRepository {
 
     public synchronized void reload() {
         PrivacyConfig loaded = readFile();
-        List<String> errors = ConfigValidator.validate(loaded);
+        List<ConfigValidationError> errors = ConfigValidator.validate(loaded);
         if (!errors.isEmpty()) {
-            NickHider.LOGGER.warn("Invalid config at {}. Reverting to defaults. Errors: {}", configPath, errors);
+            NickHider.LOGGER.warn("Invalid config at {}. Reverting to defaults. Errors: {}", configPath, joinFallbackMessages(errors));
             loaded = new PrivacyConfig();
             writeFile(loaded);
         }
@@ -39,9 +40,9 @@ public final class ConfigRepository {
     }
 
     public synchronized void save(PrivacyConfig next) {
-        List<String> errors = ConfigValidator.validate(next);
+        List<ConfigValidationError> errors = ConfigValidator.validate(next);
         if (!errors.isEmpty()) {
-            throw new IllegalArgumentException("Invalid privacy config: " + String.join(" | ", errors));
+            throw new IllegalArgumentException("Invalid privacy config: " + joinFallbackMessages(errors));
         }
 
         writeFile(next);
@@ -75,5 +76,9 @@ public final class ConfigRepository {
         } catch (IOException ex) {
             throw new RuntimeException("Failed to write config file " + configPath, ex);
         }
+    }
+
+    private static String joinFallbackMessages(List<ConfigValidationError> errors) {
+        return errors.stream().map(ConfigValidationError::fallbackMessage).collect(Collectors.joining(" | "));
     }
 }

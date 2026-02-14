@@ -2,7 +2,6 @@ package dev.przxmus.nickhider.client;
 
 import java.util.List;
 import java.util.ArrayList;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -12,6 +11,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import dev.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.config.ConfigValidationError;
 import dev.przxmus.nickhider.config.ConfigValidator;
 import dev.przxmus.nickhider.config.PrivacyConfig;
 
@@ -143,12 +143,12 @@ public final class PrivacyConfigScreen extends Screen {
 
     private void refreshValidation() {
         PrivacyConfig candidate = collectConfig();
-        List<String> errors = ConfigValidator.validate(candidate);
+        List<ConfigValidationError> errors = ConfigValidator.validate(candidate);
 
         this.saveButton.active = errors.isEmpty();
         this.validationMessage = errors.isEmpty()
                 ? CommonComponents.EMPTY
-                : Component.literal(errors.get(0)).withStyle(ChatFormatting.RED);
+                : Component.translatable(errors.get(0).translationKey());
     }
 
     private PrivacyConfig collectConfig() {
@@ -166,9 +166,9 @@ public final class PrivacyConfigScreen extends Screen {
 
     private void saveAndClose() {
         PrivacyConfig config = collectConfig();
-        List<String> errors = ConfigValidator.validate(config);
+        List<ConfigValidationError> errors = ConfigValidator.validate(config);
         if (!errors.isEmpty()) {
-            this.validationMessage = Component.literal(errors.get(0)).withStyle(ChatFormatting.RED);
+            this.validationMessage = Component.translatable(errors.get(0).translationKey());
             return;
         }
 
