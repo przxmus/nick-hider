@@ -1,9 +1,9 @@
 package dev.przxmus.nickhider.mixin;
 
 import com.mojang.authlib.GameProfile;
-import java.util.Optional;
+import java.util.Objects;
 import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.resources.PlayerSkin;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -17,25 +17,41 @@ public abstract class PlayerInfoMixin {
     @Shadow
     public abstract GameProfile getProfile();
 
-    @Inject(method = "getSkinLocation", at = @At("HEAD"), cancellable = true)
-    private void nickhider$overrideSkinLocation(CallbackInfoReturnable<ResourceLocation> cir) {
+    @Inject(method = "getSkin", at = @At("RETURN"), cancellable = true)
+    private void nickhider$overrideSkin(CallbackInfoReturnable<PlayerSkin> cir) {
         GameProfile profile = this.getProfile();
         if (profile == null || profile.getId() == null) {
             return;
         }
 
-        Optional<ResolvedSkin> replacement = NickHider.runtime().replacementSkin(profile.getId());
-        replacement.ifPresent(resolvedSkin -> cir.setReturnValue(resolvedSkin.textureLocation()));
-    }
-
-    @Inject(method = "getModelName", at = @At("HEAD"), cancellable = true)
-    private void nickhider$overrideSkinModel(CallbackInfoReturnable<String> cir) {
-        GameProfile profile = this.getProfile();
-        if (profile == null || profile.getId() == null) {
+        PlayerSkin original = cir.getReturnValue();
+        if (original == null) {
             return;
         }
 
-        Optional<ResolvedSkin> replacement = NickHider.runtime().replacementSkin(profile.getId());
-        replacement.ifPresent(resolvedSkin -> cir.setReturnValue(resolvedSkin.modelName()));
+        ResolvedSkin skinReplacement = NickHider.runtime().replacementSkin(profile.getId()).orElse(null);
+        boolean shouldOverrideCape = NickHider.runtime().shouldOverrideCape(profile.getId());
+        ResolvedSkin capeReplacement = NickHider.runtime().replacementCape(profile.getId()).orElse(null);
+
+        PlayerSkin.Model model = skinReplacement == null
+                ? original.model()
+                : PlayerSkin.Model.byName(skinReplacement.modelName());
+        var texture = skinReplacement == null ? original.texture() : skinReplacement.textureLocation();
+        var capeTexture = original.capeTexture();
+        var elytraTexture = original.elytraTexture();
+
+        if (shouldOverrideCape) {
+            capeTexture = capeReplacement == null ? null : capeReplacement.capeTextureLocation();
+            elytraTexture = capeReplacement == null ? null : capeReplacement.elytraTextureLocation();
+        }
+
+        if (Objects.equals(texture, original.texture())
+                && Objects.equals(capeTexture, original.capeTexture())
+                && Objects.equals(elytraTexture, original.elytraTexture())
+                && model == original.model()) {
+            return;
+        }
+
+        cir.setReturnValue(new PlayerSkin(texture, original.textureUrl(), capeTexture, elytraTexture, model, original.secure()));
     }
 }
