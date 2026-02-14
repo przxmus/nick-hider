@@ -35,4 +35,8 @@ public final class NickHider {
     public static PrivacyRuntimeState runtime() {
         return Objects.requireNonNull(runtimeState, "NickHider runtime is not bootstrapped");
     }
+
+    public static synchronized PrivacyRuntimeState runtimeOrNull() {
+        return runtimeState;
+    }
 }

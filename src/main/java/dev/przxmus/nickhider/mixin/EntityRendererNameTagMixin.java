@@ -15,14 +15,20 @@ public abstract class EntityRendererNameTagMixin {
             method = "renderNameTag",
             at = @At("HEAD"),
             argsOnly = true,
-            index = 2
+            index = 2,
+            require = 0
     )
     private Component nickhider$replaceNametagText(Component displayName, Entity entity) {
         if (!(entity instanceof Player)) {
             return displayName;
         }
 
-        String sanitized = NickHider.runtime().sanitizeText(displayName.getString());
+        var runtime = NickHider.runtimeOrNull();
+        if (runtime == null) {
+            return displayName;
+        }
+
+        String sanitized = runtime.sanitizeText(displayName.getString());
         if (sanitized.equals(displayName.getString())) {
             return displayName;
         }

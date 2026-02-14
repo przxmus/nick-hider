@@ -13,8 +13,13 @@ import dev.przxmus.nickhider.core.ProfileCompat;
 
 @Mixin(PlayerTabOverlay.class)
 public class PlayerTabOverlayMixin {
-    @Inject(method = "getNameForDisplay", at = @At("RETURN"), cancellable = true)
+    @Inject(method = "getNameForDisplay", at = @At("RETURN"), cancellable = true, require = 0)
     private void nickhider$replaceDisplayedTabName(PlayerInfo info, CallbackInfoReturnable<Component> cir) {
+        var runtime = NickHider.runtimeOrNull();
+        if (runtime == null) {
+            return;
+        }
+
         GameProfile profile = info.getProfile();
         java.util.UUID profileId = ProfileCompat.id(profile);
         String profileName = ProfileCompat.name(profile);
@@ -22,7 +27,7 @@ public class PlayerTabOverlayMixin {
             return;
         }
 
-        String replacement = NickHider.runtime().replacementName(profileId, profileName);
+        String replacement = runtime.replacementName(profileId, profileName);
         if (!replacement.equals(profileName)) {
             cir.setReturnValue(Component.literal(replacement));
         }

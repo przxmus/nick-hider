@@ -8,6 +8,7 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
@@ -37,7 +38,6 @@ public final class PrivacyConfigScreen extends Screen {
     private Button saveButton;
     private Component validationMessage = CommonComponents.EMPTY;
     private final List<ScrollableWidget> scrollableWidgets = new ArrayList<>();
-    private final List<ScrollableLabel> scrollableLabels = new ArrayList<>();
     private int contentTop;
     private int contentBottom;
     private int contentHeight;
@@ -63,7 +63,6 @@ public final class PrivacyConfigScreen extends Screen {
     @Override
     protected void init() {
         this.scrollableWidgets.clear();
-        this.scrollableLabels.clear();
         this.scrollOffset = 0;
 
         int centerX = this.width / 2;
@@ -169,7 +168,19 @@ public final class PrivacyConfigScreen extends Screen {
     }
 
     private EditBox addField(int baseY, Component label, int maxLength, String value) {
-        this.scrollableLabels.add(new ScrollableLabel(label, this.formLeft, baseY));
+        StringWidget labelWidget = new StringWidget(
+                this.formLeft,
+                this.contentTop + baseY,
+                this.formWidth,
+                this.font.lineHeight,
+                label,
+                this.font
+        );
+        setLabelColor(labelWidget, 0xE0E0E0);
+        alignLabelLeft(labelWidget);
+        this.addRenderableWidget(labelWidget);
+        addScrollableWidget(labelWidget, baseY);
+        labelWidget.active = false;
 
         EditBox box = new EditBox(this.font, this.formLeft, this.contentTop + baseY + 12, this.formWidth, 20, label);
         box.setMaxLength(maxLength);
@@ -255,12 +266,6 @@ public final class PrivacyConfigScreen extends Screen {
         int footerY = this.height - 28;
 
         graphics.drawCenteredString(this.font, this.title, centerX, 16, 0xFFFFFF);
-        for (ScrollableLabel label : this.scrollableLabels) {
-            int y = this.contentTop + label.baseY - this.scrollOffset;
-            if (y + this.font.lineHeight > this.contentTop && y < this.contentBottom) {
-                graphics.drawString(this.font, label.text, label.x, y, 0xE0E0E0);
-            }
-        }
 
         if (!this.validationMessage.getString().isEmpty()) {
             graphics.drawCenteredString(this.font, this.validationMessage, centerX, footerY - 12, 0xFF5555);
@@ -319,6 +324,25 @@ public final class PrivacyConfigScreen extends Screen {
         return Math.min(value, max);
     }
 
+    private static void alignLabelLeft(StringWidget labelWidget) {
+        try {
+            Method alignLeft = StringWidget.class.getMethod("alignLeft");
+            alignLeft.setAccessible(true);
+            alignLeft.invoke(labelWidget);
+        } catch (ReflectiveOperationException ignored) {
+            // Newer versions removed explicit alignment helpers.
+        }
+    }
+
+    private static void setLabelColor(StringWidget labelWidget, int color) {
+        try {
+            Method setColor = StringWidget.class.getMethod("setColor", int.class);
+            setColor.setAccessible(true);
+            setColor.invoke(labelWidget, color);
+        } catch (ReflectiveOperationException ignored) {
+            // Fallback to default color when setter signature differs.
+        }
+    }
+
     private record ScrollableWidget(AbstractWidget widget, int baseY) {}
-    private record ScrollableLabel(Component text, int x, int baseY) {}
 }

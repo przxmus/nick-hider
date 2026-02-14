@@ -2,6 +2,7 @@ package dev.przxmus.nickhider.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Method;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -26,6 +27,19 @@ import net.minecraftforge.fml.ModLoadingContext;
 /*? if neoforge {*/
 /*import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.common.NeoForge;
+*/
+/*?}*/
+/*? if neoforge && <1.20.6 {*/
+/*import net.neoforged.neoforge.client.ConfigScreenHandler;
+import net.neoforged.neoforge.event.TickEvent;
+*/
+/*?}*/
+/*? if neoforge && >=1.20.6 {*/
+/*import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 */
 /*?}*/
 
@@ -66,11 +80,51 @@ public final class NickHiderClient {
             return createMethod.invoke(null, "key.categories.nickhider");
         } catch (NoSuchMethodException ignored) {}
 
+        for (Method method : categoryClass.getDeclaredMethods()) {
+            if (!Modifier.isStatic(method.getModifiers())) {
+                continue;
+            }
+            if (!categoryClass.isAssignableFrom(method.getReturnType())) {
+                continue;
+            }
+
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            try {
+                if (parameterTypes.length == 1 && parameterTypes[0] == String.class) {
+                    method.setAccessible(true);
+                    return method.invoke(null, "key.categories.nickhider");
+                }
+                if (parameterTypes.length == 0) {
+                    method.setAccessible(true);
+                    Object value = method.invoke(null);
+                    if (value != null) {
+                        return value;
+                    }
+                }
+            } catch (ReflectiveOperationException ignored) {}
+        }
+
         if (categoryClass.isEnum()) {
             Object[] constants = categoryClass.getEnumConstants();
             if (constants != null && constants.length > 0) {
                 return constants[0];
             }
+        }
+
+        for (var field : categoryClass.getDeclaredFields()) {
+            if (!Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            if (!categoryClass.isAssignableFrom(field.getType())) {
+                continue;
+            }
+            try {
+                field.setAccessible(true);
+                Object value = field.get(null);
+                if (value != null) {
+                    return value;
+                }
+            } catch (ReflectiveOperationException ignored) {}
         }
 
         throw new IllegalStateException("Unable to resolve key category for current Minecraft version");
@@ -127,9 +181,66 @@ public final class NickHiderClient {
     }*/
     /*?}*/
 
-    /*? if neoforge {*/
+    /*? if neoforge && <1.20.6 {*/
     /*public static void initNeoForge(IEventBus modEventBus, ModContainer modContainer) {
-        // Intentionally minimal for broad API compatibility across NeoForge lines.
+        modEventBus.addListener(NickHiderClient::onRegisterKeyMappingsNeoForge);
+        NeoForge.EVENT_BUS.addListener(NickHiderClient::onClientTickNeoForge);
+        NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingInNeoForge);
+        NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingOutNeoForge);
+
+        modContainer.registerExtensionPoint(
+                ConfigScreenHandler.ConfigScreenFactory.class,
+                () -> new ConfigScreenHandler.ConfigScreenFactory((minecraft, parent) -> new PrivacyConfigScreen(parent))
+        );
+    }
+
+    private static void onRegisterKeyMappingsNeoForge(RegisterKeyMappingsEvent event) {
+        event.register(OPEN_CONFIG_KEY);
+    }
+
+    private static void onClientTickNeoForge(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            tryOpenConfigScreen(Minecraft.getInstance());
+        }
+    }
+
+    private static void onLoggingInNeoForge(ClientPlayerNetworkEvent.LoggingIn event) {
+        onWorldChange();
+    }
+
+    private static void onLoggingOutNeoForge(ClientPlayerNetworkEvent.LoggingOut event) {
+        onWorldChange();
+    }*/
+    /*?}*/
+
+    /*? if neoforge && >=1.20.6 {*/
+    /*public static void initNeoForge(IEventBus modEventBus, ModContainer modContainer) {
+        modEventBus.addListener(NickHiderClient::onRegisterKeyMappingsNeoForge);
+        NeoForge.EVENT_BUS.addListener(NickHiderClient::onClientTickNeoForgePost);
+        NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingInNeoForge);
+        NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingOutNeoForge);
+
+        IConfigScreenFactory configFactory = (container, parent) -> new PrivacyConfigScreen(parent);
+        modContainer.registerExtensionPoint(
+                IConfigScreenFactory.class,
+                configFactory
+        );
+    }
+
+    private static void onRegisterKeyMappingsNeoForge(RegisterKeyMappingsEvent event) {
+        event.register(OPEN_CONFIG_KEY);
+    }
+
+    private static void onClientTickNeoForgePost(ClientTickEvent.Post event) {
+        tryOpenConfigScreen(Minecraft.getInstance());
+    }
+
+    private static void onLoggingInNeoForge(ClientPlayerNetworkEvent.LoggingIn event) {
+        onWorldChange();
+    }
+
+    private static void onLoggingOutNeoForge(ClientPlayerNetworkEvent.LoggingOut event) {
+        onWorldChange();
     }*/
     /*?}*/
 
@@ -144,6 +255,9 @@ public final class NickHiderClient {
     }
 
     private static void onWorldChange() {
-        NickHider.runtime().onWorldChange();
+        var runtime = NickHider.runtimeOrNull();
+        if (runtime != null) {
+            runtime.onWorldChange();
+        }
     }
 }

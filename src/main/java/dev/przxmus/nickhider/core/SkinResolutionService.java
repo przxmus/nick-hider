@@ -479,13 +479,17 @@ public final class SkinResolutionService {
             if (!"register".equals(method.getName()) || method.getParameterCount() != 2) {
                 continue;
             }
+            Class<?>[] parameterTypes = method.getParameterTypes();
+            if (!parameterTypes[0].isInstance(location)) {
+                continue;
+            }
             if (!method.getParameterTypes()[1].isAssignableFrom(texture.getClass())) {
                 continue;
             }
             try {
                 method.invoke(textureManager, location, texture);
                 return;
-            } catch (ReflectiveOperationException ignored) {}
+            } catch (ReflectiveOperationException | IllegalArgumentException ignored) {}
         }
         throw new IllegalStateException("Unable to register texture for current Minecraft version");
     }

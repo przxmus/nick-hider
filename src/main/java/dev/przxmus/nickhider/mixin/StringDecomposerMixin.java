@@ -15,9 +15,14 @@ public class StringDecomposerMixin {
                     target = "Lnet/minecraft/util/StringDecomposer;iterateFormatted(Ljava/lang/String;ILnet/minecraft/network/chat/Style;Lnet/minecraft/util/FormattedCharSink;)Z",
                     ordinal = 0
             ),
-            index = 0
+            index = 0,
+            require = 0
     )
     private static String nickhider$sanitizeText(String text) {
-        return NickHider.runtime().sanitizeText(text);
+        var runtime = NickHider.runtimeOrNull();
+        if (runtime == null) {
+            return text;
+        }
+        return runtime.sanitizeText(text);
     }
 }
