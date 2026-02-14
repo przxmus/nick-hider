@@ -16,8 +16,11 @@ Roadmap: the project is structured for future MultiLoader/MultiVersion expansion
 
 - Hides/replaces local player name.
 - Hides/replaces local player skin.
+- Hides/replaces local player cape (and cape-based elytra texture where applicable).
 - Hides/replaces other players' names (template with `[ID]` token).
 - Hides/replaces other players' skins (shared configured source).
+- Hides/replaces other players' capes (and cape-based elytra texture where applicable).
+- Global enable/disable switch for all masking behavior.
 
 Settings are available in-game:
 - Forge Mod List config screen
@@ -29,12 +32,20 @@ The config exposes only these fields:
 
 - `Hide Local Name`
 - `Hide Local Skin`
+- `Hide Local Cape`
 - `Hide Other Names`
 - `Hide Other Skins`
+- `Hide Other Capes`
 - `Local Replacement Name`
 - `Local Skin Source Username`
+- `Local Cape Source Username`
 - `Other Players Name Template`
 - `Other Players Skin Source Username`
+- `Other Players Cape Source Username`
+- `Enable Nick Hider`
+
+Cape fallback behavior:
+- If cape masking is enabled but no valid cape source can be resolved, cape rendering is hidden instead of falling back to the original cape.
 
 ## Installation
 
