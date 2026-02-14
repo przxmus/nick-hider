@@ -22,6 +22,37 @@ only_pattern=""
 from_project=""
 to_project=""
 
+collect_projects() {
+  local input="$1"
+  if command -v rg >/dev/null 2>&1; then
+    printf '%s\n' "$input" | rg "Project ':1\.[0-9].*'" -o | sed "s/Project '//; s/'//" | sed 's/^://g'
+  else
+    printf '%s\n' "$input" | grep -o "Project ':1\.[0-9].*'" | sed "s/Project '//; s/'//" | sed 's/^://g'
+  fi
+}
+
+sort_projects() {
+  if printf '1.2\n1.10\n' | sort -V >/dev/null 2>&1; then
+    sort -V
+    return
+  fi
+
+  awk '
+    {
+      split($0, parts, /-/)
+      version = parts[1]
+      loader = (length(parts) > 1 ? parts[2] : "")
+
+      n = split(version, v, /\./)
+      major = (n >= 1 ? v[1] : 0)
+      minor = (n >= 2 ? v[2] : 0)
+      patch = (n >= 3 ? v[3] : 0)
+
+      printf("%04d.%04d.%04d\t%s\t%s\n", major, minor, patch, loader, $0)
+    }
+  ' | sort | cut -f3-
+}
+
 usage() {
   cat <<USAGE
 Usage: bash scripts/runclient-notes.sh [options]
@@ -88,11 +119,11 @@ printf 'project\tresult\truntime_s\tlog_file\n' > "$summary_file"
 echo "Collecting projects from Gradle..."
 projects_raw="$(./gradlew projects -q)"
 
-if command -v rg >/dev/null 2>&1; then
-  mapfile -t all_projects < <(printf '%s\n' "$projects_raw" | rg "Project ':1\.[0-9].*'" -o | sed "s/Project '//; s/'//" | sed 's/^://g' | sort -V)
-else
-  mapfile -t all_projects < <(printf '%s\n' "$projects_raw" | grep -o "Project ':1\.[0-9].*'" | sed "s/Project '//; s/'//" | sed 's/^://g' | sort -V)
-fi
+all_projects=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] || continue
+  all_projects+=("$line")
+done < <(collect_projects "$projects_raw" | sort_projects)
 
 if [[ ${#all_projects[@]} -eq 0 ]]; then
   echo "No 1.* projects found." >&2
