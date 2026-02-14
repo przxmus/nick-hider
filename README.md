@@ -18,22 +18,22 @@ Copyright (c) 2026 przxmus
 - `1.20`: Fabric, Forge
 - `1.20.1`: Fabric, Forge
 - `1.20.2`: Fabric, Forge, NeoForge
-- `1.20.3`: Fabric, Forge
+- `1.20.3`: Fabric
 - `1.20.4`: Fabric, Forge, NeoForge
 - `1.20.5`: Fabric
 - `1.20.6`: Fabric, Forge, NeoForge
-- `1.21`: Fabric, Forge, NeoForge
-- `1.21.1`: Fabric, Forge, NeoForge
+- `1.21`: Fabric, NeoForge
+- `1.21.1`: Fabric, NeoForge
 - `1.21.2`: Fabric
-- `1.21.3`: Fabric, Forge, NeoForge
-- `1.21.4`: Fabric, Forge, NeoForge
-- `1.21.5`: Fabric, Forge, NeoForge
-- `1.21.6`: Fabric, Forge
-- `1.21.7`: Fabric, Forge
-- `1.21.8`: Fabric, Forge, NeoForge
-- `1.21.9`: Fabric, Forge
-- `1.21.10`: Fabric, Forge, NeoForge
-- `1.21.11`: Fabric, Forge
+- `1.21.3`: Fabric, NeoForge
+- `1.21.4`: Fabric, NeoForge
+- `1.21.5`: Fabric, NeoForge
+- `1.21.6`: Fabric
+- `1.21.7`: Fabric
+- `1.21.8`: Fabric, NeoForge
+- `1.21.9`: Fabric
+- `1.21.10`: Fabric, NeoForge
+- `1.21.11`: Fabric
 
 ## What It Does
 
