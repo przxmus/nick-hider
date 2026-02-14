@@ -2,6 +2,16 @@ name: Manual Publish
 
 on:
   workflow_dispatch:
+    inputs:
+      provider:
+        description: "Where to publish"
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - modrinth
+          - curseforge
 
 permissions:
   contents: read
@@ -9,11 +19,13 @@ permissions:
 jobs:
   modrinth:
     name: Publish to Modrinth
+    if: ${{ inputs.provider == 'both' || inputs.provider == 'modrinth' }}
     uses: ./.github/workflows/modrinth-publish.yml
     secrets: inherit
 
   curseforge:
     name: Publish to CurseForge
+    if: ${{ inputs.provider == 'both' || inputs.provider == 'curseforge' }}
     uses: ./.github/workflows/curseforge-publish.yml
     secrets: inherit
 
@@ -25,12 +37,14 @@ jobs:
     steps:
       - name: Print orchestration summary
         run: |
+          echo "Requested provider: ${{ inputs.provider }}"
           echo "Modrinth workflow result: ${{ needs.modrinth.result }}"
           echo "CurseForge workflow result: ${{ needs.curseforge.result }}"
 
           {
             echo "## Manual Publish Summary"
             echo
+            echo "- Requested provider: \`${{ inputs.provider }}\`"
             echo "- Modrinth workflow result: \`${{ needs.modrinth.result }}\`"
             echo "- CurseForge workflow result: \`${{ needs.curseforge.result }}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
