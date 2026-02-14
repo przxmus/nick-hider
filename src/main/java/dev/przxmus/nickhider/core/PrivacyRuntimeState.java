@@ -88,7 +88,7 @@ public final class PrivacyRuntimeState {
         PrivacyConfig config = configRepository.get();
         Minecraft minecraft = Minecraft.getInstance();
         boolean local = targetUuid.equals(minecraft.player.getUUID());
-        String sourceUser = local ? config.localCapeUser : config.othersCapeUser;
+        String sourceUser = local ? preferredCapeSource(config.localCapeUser, config.localSkinUser) : preferredCapeSource(config.othersCapeUser, config.othersSkinUser);
         if (StringUtil.isNullOrEmpty(sourceUser)) {
             return Optional.empty();
         }
@@ -98,6 +98,13 @@ public final class PrivacyRuntimeState {
             return Optional.empty();
         }
         return Optional.of(replacement);
+    }
+
+    private static String preferredCapeSource(String capeSourceUser, String skinSourceUser) {
+        if (!StringUtil.isNullOrEmpty(capeSourceUser)) {
+            return capeSourceUser;
+        }
+        return skinSourceUser;
     }
 
     public String replacementName(UUID targetUuid, String originalName) {
