@@ -392,8 +392,8 @@ public final class SkinResolutionService {
     }
 
     private ResolvedSkin defaultSkin(UUID fallbackUuid) {
-        Object location = resolveDefaultSkinLocation(fallbackUuid);
         String modelName = resolveDefaultSkinModel(fallbackUuid);
+        Object location = resolveDefaultSkinLocation(fallbackUuid, modelName);
         return new ResolvedSkin(location, modelName, null, null);
     }
 
@@ -494,20 +494,31 @@ public final class SkinResolutionService {
         throw new IllegalStateException("Unable to register texture for current Minecraft version");
     }
 
-    private static Object resolveDefaultSkinLocation(UUID fallbackUuid) {
+    private static Object resolveDefaultSkinLocation(UUID fallbackUuid, String modelName) {
         try {
             Method method = DefaultPlayerSkin.class.getMethod("getDefaultSkin", UUID.class);
             return method.invoke(null, fallbackUuid);
         } catch (ReflectiveOperationException ignored) {}
 
-        for (String methodName : new String[] {"getDefaultSkin", "getDefaultTexture"}) {
+        for (String methodName : new String[] {"getDefaultSkin", "getDefaultTexture", "getTexture"}) {
+            try {
+                Method method = DefaultPlayerSkin.class.getMethod(methodName, UUID.class);
+                return method.invoke(null, fallbackUuid);
+            } catch (ReflectiveOperationException ignored) {}
+        }
+
+        for (String methodName : new String[] {"getDefaultSkin", "getDefaultTexture", "getTexture"}) {
             try {
                 Method method = DefaultPlayerSkin.class.getMethod(methodName);
                 return method.invoke(null);
             } catch (ReflectiveOperationException ignored) {}
         }
 
-        throw new IllegalStateException("Unable to resolve default skin location");
+        String fallbackPath = "slim".equalsIgnoreCase(modelName)
+                ? "textures/entity/player/slim/alex.png"
+                : "textures/entity/player/wide/steve.png";
+        NickHider.LOGGER.warn("Falling back to hardcoded default skin path for model {}", modelName);
+        return createResourceLocation("minecraft", fallbackPath);
     }
 
     private static String resolveDefaultSkinModel(UUID fallbackUuid) {
