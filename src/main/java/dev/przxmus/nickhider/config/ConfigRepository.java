@@ -2,7 +2,9 @@ package dev.przxmus.nickhider.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -57,8 +59,14 @@ public final class ConfigRepository {
         }
 
         try (Reader reader = Files.newBufferedReader(configPath, StandardCharsets.UTF_8)) {
-            PrivacyConfig loaded = GSON.fromJson(reader, PrivacyConfig.class);
-            return loaded == null ? new PrivacyConfig() : loaded;
+            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+            PrivacyConfig loaded = GSON.fromJson(root, PrivacyConfig.class);
+            if (loaded == null) {
+                return new PrivacyConfig();
+            }
+
+            applyMissingDefaults(root, loaded);
+            return loaded;
         } catch (IOException | JsonParseException ex) {
             NickHider.LOGGER.warn("Failed to read config {}, using defaults", configPath, ex);
             return new PrivacyConfig();
@@ -75,6 +83,38 @@ public final class ConfigRepository {
             Files.move(tempPath, configPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException ex) {
             throw new RuntimeException("Failed to write config file " + configPath, ex);
+        }
+    }
+
+    private static void applyMissingDefaults(JsonObject root, PrivacyConfig loaded) {
+        PrivacyConfig defaults = new PrivacyConfig();
+        if (!root.has("enabled")) {
+            loaded.enabled = defaults.enabled;
+        }
+        if (!root.has("hideLocalCape")) {
+            loaded.hideLocalCape = defaults.hideLocalCape;
+        }
+        if (!root.has("hideOtherCapes")) {
+            loaded.hideOtherCapes = defaults.hideOtherCapes;
+        }
+
+        if (loaded.localName == null) {
+            loaded.localName = defaults.localName;
+        }
+        if (loaded.localSkinUser == null) {
+            loaded.localSkinUser = defaults.localSkinUser;
+        }
+        if (loaded.localCapeUser == null) {
+            loaded.localCapeUser = defaults.localCapeUser;
+        }
+        if (loaded.othersNameTemplate == null) {
+            loaded.othersNameTemplate = defaults.othersNameTemplate;
+        }
+        if (loaded.othersSkinUser == null) {
+            loaded.othersSkinUser = defaults.othersSkinUser;
+        }
+        if (loaded.othersCapeUser == null) {
+            loaded.othersCapeUser = defaults.othersCapeUser;
         }
     }
 
