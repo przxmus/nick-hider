@@ -126,7 +126,7 @@ jobs:
               fi
 
               display_name="Nick Hider ${mod_version} for ${loader_display} ${mc_version}"
-              game_versions="Minecraft ${mc_version}:${mc_version},${loader_display}"
+              game_versions="minecraft:${mc_version},${loader}"
 
               jq -nc \
                 --arg loader "${loader}" \
