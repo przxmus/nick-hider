@@ -4,6 +4,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
+import net.minecraft.util.StringUtil;
 import dev.przxmus.nickhider.config.ConfigRepository;
 import dev.przxmus.nickhider.config.PrivacyConfig;
 
@@ -40,13 +41,17 @@ public final class PrivacyRuntimeState {
     }
 
     public String sanitizeText(String text) {
-        return textSanitizer.sanitize(text, configRepository.get());
+        PrivacyConfig config = configRepository.get();
+        if (!config.enabled) {
+            return text;
+        }
+        return textSanitizer.sanitize(text, config);
     }
 
     public Optional<ResolvedSkin> replacementSkin(UUID targetUuid) {
         PrivacyConfig config = configRepository.get();
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || targetUuid == null) {
+        if (!config.enabled || minecraft.player == null || targetUuid == null) {
             return Optional.empty();
         }
 
@@ -62,10 +67,43 @@ public final class PrivacyRuntimeState {
         return Optional.of(skinResolutionService.resolveOrFallback(sourceUser, targetUuid));
     }
 
+    public boolean shouldOverrideCape(UUID targetUuid) {
+        PrivacyConfig config = configRepository.get();
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!config.enabled || minecraft.player == null || targetUuid == null) {
+            return false;
+        }
+
+        if (targetUuid.equals(minecraft.player.getUUID())) {
+            return config.hideLocalCape;
+        }
+        return config.hideOtherCapes;
+    }
+
+    public Optional<ResolvedSkin> replacementCape(UUID targetUuid) {
+        if (!shouldOverrideCape(targetUuid)) {
+            return Optional.empty();
+        }
+
+        PrivacyConfig config = configRepository.get();
+        Minecraft minecraft = Minecraft.getInstance();
+        boolean local = targetUuid.equals(minecraft.player.getUUID());
+        String sourceUser = local ? config.localCapeUser : config.othersCapeUser;
+        if (StringUtil.isNullOrEmpty(sourceUser)) {
+            return Optional.empty();
+        }
+
+        ResolvedSkin replacement = skinResolutionService.resolveOrFallback(sourceUser, targetUuid);
+        if (replacement.capeTextureLocation() == null && replacement.elytraTextureLocation() == null) {
+            return Optional.empty();
+        }
+        return Optional.of(replacement);
+    }
+
     public String replacementName(UUID targetUuid, String originalName) {
         PrivacyConfig config = configRepository.get();
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || targetUuid == null || originalName == null) {
+        if (!config.enabled || minecraft.player == null || targetUuid == null || originalName == null) {
             return originalName;
         }
 
