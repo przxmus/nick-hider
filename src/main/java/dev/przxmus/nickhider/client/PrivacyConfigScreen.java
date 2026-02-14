@@ -21,13 +21,17 @@ public final class PrivacyConfigScreen extends Screen {
     private boolean enabled;
     private boolean hideLocalName;
     private boolean hideLocalSkin;
+    private boolean hideLocalCape;
     private boolean hideOtherNames;
     private boolean hideOtherSkins;
+    private boolean hideOtherCapes;
 
     private EditBox localNameInput;
     private EditBox localSkinUserInput;
+    private EditBox localCapeUserInput;
     private EditBox othersNameTemplateInput;
     private EditBox othersSkinUserInput;
+    private EditBox othersCapeUserInput;
 
     private Button saveButton;
     private Component validationMessage = CommonComponents.EMPTY;
@@ -49,8 +53,10 @@ public final class PrivacyConfigScreen extends Screen {
         this.enabled = config.enabled;
         this.hideLocalName = config.hideLocalName;
         this.hideLocalSkin = config.hideLocalSkin;
+        this.hideLocalCape = config.hideLocalCape;
         this.hideOtherNames = config.hideOtherNames;
         this.hideOtherSkins = config.hideOtherSkins;
+        this.hideOtherCapes = config.hideOtherCapes;
     }
 
     @Override
@@ -98,30 +104,51 @@ public final class PrivacyConfigScreen extends Screen {
         addScrollableWidget(hideLocalSkinButton, y);
         y += 26;
 
+        CycleButton<Boolean> hideLocalCapeButton = CycleButton.onOffBuilder(this.hideLocalCape)
+                .create(this.formLeft, this.contentTop, toggleWidth, 20, Component.translatable("nickhider.config.hide_local_cape"), (button, value) -> {
+                    this.hideLocalCape = value;
+                    refreshValidation();
+                });
+        this.addRenderableWidget(hideLocalCapeButton);
+        addScrollableWidget(hideLocalCapeButton, y);
+
         CycleButton<Boolean> hideOtherNamesButton = CycleButton.onOffBuilder(this.hideOtherNames)
-                .create(this.formLeft, this.contentTop, toggleWidth, 20, Component.translatable("nickhider.config.hide_other_names"), (button, value) -> {
+                .create(rightToggleX, this.contentTop, toggleWidth, 20, Component.translatable("nickhider.config.hide_other_names"), (button, value) -> {
                     this.hideOtherNames = value;
                     refreshValidation();
                 });
         this.addRenderableWidget(hideOtherNamesButton);
         addScrollableWidget(hideOtherNamesButton, y);
+        y += 26;
 
         CycleButton<Boolean> hideOtherSkinsButton = CycleButton.onOffBuilder(this.hideOtherSkins)
-                .create(rightToggleX, this.contentTop, toggleWidth, 20, Component.translatable("nickhider.config.hide_other_skins"), (button, value) -> {
+                .create(this.formLeft, this.contentTop, toggleWidth, 20, Component.translatable("nickhider.config.hide_other_skins"), (button, value) -> {
                     this.hideOtherSkins = value;
                     refreshValidation();
                 });
         this.addRenderableWidget(hideOtherSkinsButton);
         addScrollableWidget(hideOtherSkinsButton, y);
+
+        CycleButton<Boolean> hideOtherCapesButton = CycleButton.onOffBuilder(this.hideOtherCapes)
+                .create(rightToggleX, this.contentTop, toggleWidth, 20, Component.translatable("nickhider.config.hide_other_capes"), (button, value) -> {
+                    this.hideOtherCapes = value;
+                    refreshValidation();
+                });
+        this.addRenderableWidget(hideOtherCapesButton);
+        addScrollableWidget(hideOtherCapesButton, y);
         y += 40;
 
         this.localNameInput = addField(y, Component.translatable("nickhider.config.local_name"), 16, NickHider.runtime().config().localName);
         y += 36;
         this.localSkinUserInput = addField(y, Component.translatable("nickhider.config.local_skin_user"), 16, NickHider.runtime().config().localSkinUser);
         y += 36;
+        this.localCapeUserInput = addField(y, Component.translatable("nickhider.config.local_cape_user"), 16, NickHider.runtime().config().localCapeUser);
+        y += 36;
         this.othersNameTemplateInput = addField(y, Component.translatable("nickhider.config.others_name_template"), 16, NickHider.runtime().config().othersNameTemplate);
         y += 36;
         this.othersSkinUserInput = addField(y, Component.translatable("nickhider.config.others_skin_user"), 16, NickHider.runtime().config().othersSkinUser);
+        y += 36;
+        this.othersCapeUserInput = addField(y, Component.translatable("nickhider.config.others_cape_user"), 16, NickHider.runtime().config().othersCapeUser);
         y += 32;
 
         this.contentHeight = y;
@@ -167,12 +194,16 @@ public final class PrivacyConfigScreen extends Screen {
         config.enabled = this.enabled;
         config.hideLocalName = this.hideLocalName;
         config.hideLocalSkin = this.hideLocalSkin;
+        config.hideLocalCape = this.hideLocalCape;
         config.hideOtherNames = this.hideOtherNames;
         config.hideOtherSkins = this.hideOtherSkins;
+        config.hideOtherCapes = this.hideOtherCapes;
         config.localName = this.localNameInput.getValue().trim();
         config.localSkinUser = this.localSkinUserInput.getValue().trim();
+        config.localCapeUser = this.localCapeUserInput.getValue().trim();
         config.othersNameTemplate = this.othersNameTemplateInput.getValue().trim();
         config.othersSkinUser = this.othersSkinUserInput.getValue().trim();
+        config.othersCapeUser = this.othersCapeUserInput.getValue().trim();
         return config;
     }
 
