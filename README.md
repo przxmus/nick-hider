@@ -153,7 +153,7 @@ Output:
 - Manual Modrinth publish workflow (`Manual Modrinth Publish`) publishes each release jar as a separate Modrinth version.
 - Required repository secrets for Modrinth publish:
   - `MODRINTH_TOKEN`
-  - `MODRINTH_PROJECT_ID`
+  - `MODRINTH_PROJECT_ID` (project ID or slug; project URL is also accepted)
 
 ## License
 

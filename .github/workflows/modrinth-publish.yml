@@ -10,6 +10,7 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
+      modrinth_project: ${{ steps.prepare.outputs.modrinth_project }}
       selected_tag: ${{ steps.prepare.outputs.selected_tag }}
       selected_is_prerelease: ${{ steps.prepare.outputs.selected_is_prerelease }}
       release_channel: ${{ steps.prepare.outputs.release_channel }}
@@ -45,6 +46,50 @@ jobs:
           set -euo pipefail
 
           mkdir -p modrinth-assets
+
+          project_ref="$(printf '%s' "${MODRINTH_PROJECT_ID}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+          if [ -z "${project_ref}" ]; then
+            echo "MODRINTH_PROJECT_ID is empty after trimming."
+            exit 1
+          fi
+
+          project_ref="${project_ref#https://modrinth.com/project/}"
+          project_ref="${project_ref#https://modrinth.com/mod/}"
+          project_ref="${project_ref#https://modrinth.com/plugin/}"
+          project_ref="${project_ref#https://modrinth.com/resourcepack/}"
+          project_ref="${project_ref#https://modrinth.com/shader/}"
+          project_ref="${project_ref#https://modrinth.com/datapack/}"
+          project_ref="${project_ref#http://modrinth.com/project/}"
+          project_ref="${project_ref#http://modrinth.com/mod/}"
+          project_ref="${project_ref#http://modrinth.com/plugin/}"
+          project_ref="${project_ref#http://modrinth.com/resourcepack/}"
+          project_ref="${project_ref#http://modrinth.com/shader/}"
+          project_ref="${project_ref#http://modrinth.com/datapack/}"
+          project_ref="${project_ref%%/*}"
+          project_ref="${project_ref%%\?*}"
+          project_ref="${project_ref%%#*}"
+
+          if [ -z "${project_ref}" ]; then
+            echo "Could not derive Modrinth project ID/slug from MODRINTH_PROJECT_ID."
+            exit 1
+          fi
+
+          project_ref_encoded="$(jq -rn --arg v "${project_ref}" '$v|@uri')"
+
+          project_http_status="$(
+            curl -sS \
+              -o modrinth_project_response.json \
+              -w '%{http_code}' \
+              -H "Authorization: ${MODRINTH_TOKEN}" \
+              -H "User-Agent: github-actions/${GITHUB_REPOSITORY}" \
+              "https://api.modrinth.com/v2/project/${project_ref_encoded}"
+          )"
+          if [ "${project_http_status}" != "200" ]; then
+            echo "Failed to resolve Modrinth project '${project_ref}' (from MODRINTH_PROJECT_ID). HTTP ${project_http_status}."
+            echo "Set MODRINTH_PROJECT_ID to a valid Modrinth project ID or slug."
+            cat modrinth_project_response.json || true
+            exit 1
+          fi
 
           releases_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
           selected_release="$(
@@ -154,12 +199,20 @@ jobs:
             exit 1
           fi
 
-          modrinth_versions_json="$(
-            curl -fsSL \
+          modrinth_versions_http_status="$(
+            curl -sS \
+              -o modrinth_versions_response.json \
+              -w '%{http_code}' \
               -H "Authorization: ${MODRINTH_TOKEN}" \
               -H "User-Agent: github-actions/${GITHUB_REPOSITORY}" \
-              "https://api.modrinth.com/v2/project/${MODRINTH_PROJECT_ID}/version"
+              "https://api.modrinth.com/v2/project/${project_ref_encoded}/version"
           )"
+          if [ "${modrinth_versions_http_status}" != "200" ]; then
+            echo "Failed to fetch Modrinth versions for '${project_ref}'. HTTP ${modrinth_versions_http_status}."
+            cat modrinth_versions_response.json || true
+            exit 1
+          fi
+          modrinth_versions_json="$(cat modrinth_versions_response.json)"
 
           printf '%s' "${modrinth_versions_json}" \
             | jq -r '.[].version_number // empty' \
@@ -186,6 +239,7 @@ jobs:
           fi
 
           {
+            echo "modrinth_project=${project_ref}"
             echo "selected_tag=${selected_tag}"
             echo "selected_is_prerelease=${selected_is_prerelease}"
             echo "release_channel=${release_channel}"
@@ -225,7 +279,7 @@ jobs:
         uses: cloudnode-pro/modrinth-publish@v2
         with:
           token: ${{ secrets.MODRINTH_TOKEN }}
-          project: ${{ secrets.MODRINTH_PROJECT_ID }}
+          project: ${{ needs.prepare.outputs.modrinth_project }}
           version: ${{ matrix.item.version_number }}
           name: ${{ matrix.item.version_name }}
           channel: ${{ needs.prepare.outputs.release_channel }}
@@ -251,6 +305,7 @@ jobs:
           fi
 
           echo "Selected GitHub release tag: ${{ needs.prepare.outputs.selected_tag }}"
+          echo "Resolved Modrinth project: ${{ needs.prepare.outputs.modrinth_project }}"
           echo "Selected release is prerelease: ${{ needs.prepare.outputs.selected_is_prerelease }}"
           echo "Modrinth channel: ${{ needs.prepare.outputs.release_channel }}"
           echo "Total jars discovered: ${{ needs.prepare.outputs.total_jar_count }}"
@@ -263,6 +318,7 @@ jobs:
             echo "## Manual Modrinth Publish Summary"
             echo
             echo "- Selected GitHub release tag: \`${{ needs.prepare.outputs.selected_tag }}\`"
+            echo "- Resolved Modrinth project: \`${{ needs.prepare.outputs.modrinth_project }}\`"
             echo "- Selected release is prerelease: \`${{ needs.prepare.outputs.selected_is_prerelease }}\`"
             echo "- Modrinth channel: \`${{ needs.prepare.outputs.release_channel }}\`"
             echo "- Total jars discovered: \`${{ needs.prepare.outputs.total_jar_count }}\`"
