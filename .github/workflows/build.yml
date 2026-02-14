@@ -53,31 +53,31 @@ jobs:
           LOADER: ${{ matrix.loader }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          PROJECT_DIRS=(versions/*-"${LOADER}")
-          if [ "${#PROJECT_DIRS[@]}" -eq 0 ]; then
-            echo "No directories matched versions/*-${LOADER}"
-            echo "Available directories in versions/:"
-            ls -la versions || true
+          PROJECTS="$(
+            grep -E '^[[:space:]]*mc\(' settings.gradle.kts \
+              | grep "\"${LOADER}\"" \
+              | sed -E "s/^[^\"]*\"([^\"]+)\".*/\1-${LOADER}/" \
+              | sort -V \
+              | xargs
+          )"
+
+          # Fallback for unexpected settings format changes.
+          if [ -z "${PROJECTS}" ]; then
+            echo "Could not resolve projects from settings.gradle.kts, falling back to Gradle project listing."
+            PROJECTS="$(./gradlew -q projects | grep -oE "1\\.[0-9.]+-${LOADER}" | sort -Vu | xargs)"
+          fi
+
+          if [ -z "${PROJECTS}" ]; then
+            echo "No projects found for loader ${LOADER}."
             exit 1
           fi
 
-          mapfile -t PROJECTS < <(
-            for dir in "${PROJECT_DIRS[@]}"; do
-              basename "${dir}"
-            done | sort -V
-          )
-
-          if [ "${#PROJECTS[@]}" -eq 0 ]; then
-            echo "No projects found for loader ${LOADER}"
-            exit 1
-          fi
           echo "Projects for ${LOADER}:"
-          for project in "${PROJECTS[@]}"; do
+          for project in ${PROJECTS}; do
             printf ' - %s\n' "${project}"
           done
           TASKS=()
-          for project in "${PROJECTS[@]}"; do
+          for project in ${PROJECTS}; do
             TASKS+=(":${project}:build")
           done
           echo "gradle_tasks=${TASKS[*]}" >> "$GITHUB_OUTPUT"
