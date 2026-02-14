@@ -150,6 +150,10 @@ Output:
 
 - CI build workflow runs in loader shards (`fabric`, `forge`, `neoforge`) and uploads jar artifacts per shard.
 - Manual release workflow reuses those CI artifacts for the tagged release commit instead of rebuilding jars.
+- Manual Modrinth publish workflow (`Manual Modrinth Publish`) publishes each release jar as a separate Modrinth version.
+- Required repository secrets for Modrinth publish:
+  - `MODRINTH_TOKEN`
+  - `MODRINTH_PROJECT_ID`
 
 ## License
 
