@@ -2,6 +2,7 @@ import gg.meza.stonecraft.mod
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.jvm.tasks.Jar
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 fun requiresJava21ForMinecraft(version: String): Boolean {
     val parts = version.split('.')
@@ -27,6 +28,12 @@ modSettings {
         narrator = false
         darkBackground = true
         musicVolume = 0.0
+    }
+}
+
+repositories {
+    maven {
+        url = uri(rootProject.layout.projectDirectory.dir(".local-maven"))
     }
 }
 
@@ -61,6 +68,10 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    val targetJava = if (requiresJava21ForMinecraft(mod.minecraftVersion)) 21 else 17
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(targetJava))
+    })
 }
 
 tasks.withType<Jar>().configureEach {
@@ -68,7 +79,11 @@ tasks.withType<Jar>().configureEach {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.release.set(if (requiresJava21ForMinecraft(mod.minecraftVersion)) 21 else 17)
+    val targetJava = if (requiresJava21ForMinecraft(mod.minecraftVersion)) 21 else 17
+    javaCompiler.set(javaToolchains.compilerFor {
+        languageVersion.set(JavaLanguageVersion.of(targetJava))
+    })
+    options.release.set(targetJava)
     if (name == "compileTestJava" && tasks.names.contains("generatePackMCMetaJson")) {
         dependsOn(tasks.named("generatePackMCMetaJson"))
     }
