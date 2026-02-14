@@ -271,6 +271,24 @@ jobs:
           name: modrinth-source-jars
           path: .
 
+      - name: Normalize downloaded jar paths
+        run: |
+          set -euo pipefail
+          mkdir -p modrinth-assets
+
+          mapfile -t downloaded_jars < <(find . -type f -name "nickhider-*.jar" | sort -u)
+          if [ "${#downloaded_jars[@]}" -eq 0 ]; then
+            echo "No jars were downloaded from artifact modrinth-source-jars."
+            exit 1
+          fi
+
+          for jar in "${downloaded_jars[@]}"; do
+            target="modrinth-assets/$(basename "${jar}")"
+            if [ "${jar}" != "${target}" ]; then
+              cp "${jar}" "${target}"
+            fi
+          done
+
       - name: Publish version to Modrinth
         uses: cloudnode-pro/modrinth-publish@v2
         with:
