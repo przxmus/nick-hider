@@ -27,22 +27,18 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-          cache: gradle
-          cache-dependency-path: |
-            versions/*.properties
-            *.properties
-            *.gradle.kts
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           validate-wrappers: true
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/beta' }}
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
       - name: Build
-        run: ./gradlew --stacktrace clean build
+        run: ./gradlew --stacktrace build -PmatrixTests=false
 
       - name: Upload jars
         uses: actions/upload-artifact@v4
