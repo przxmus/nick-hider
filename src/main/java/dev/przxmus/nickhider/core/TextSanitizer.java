@@ -27,14 +27,19 @@ public final class TextSanitizer {
         }
 
         Map<UUID, String> names = new LinkedHashMap<>();
-        names.put(localPlayer.getUUID(), localPlayer.getGameProfile().getName());
+        String localName = ProfileCompat.name(localPlayer.getGameProfile());
+        if (localName != null) {
+            names.put(localPlayer.getUUID(), localName);
+        }
 
         if (minecraft.getConnection() != null) {
             for (PlayerInfo info : minecraft.getConnection().getOnlinePlayers()) {
-                if (info.getProfile().getId() == null || info.getProfile().getName() == null) {
+                UUID profileId = ProfileCompat.id(info.getProfile());
+                String profileName = ProfileCompat.name(info.getProfile());
+                if (profileId == null || profileName == null) {
                     continue;
                 }
-                names.put(info.getProfile().getId(), info.getProfile().getName());
+                names.put(profileId, profileName);
             }
         }
 

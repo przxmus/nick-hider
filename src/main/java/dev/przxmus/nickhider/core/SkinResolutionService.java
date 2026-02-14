@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.io.Writer;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -24,11 +26,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.resources.DefaultPlayerSkin;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.StringUtil;
 import com.mojang.blaze3d.platform.NativeImage;
 import dev.przxmus.nickhider.NickHider;
@@ -277,13 +279,13 @@ public final class SkinResolutionService {
                 return null;
             }
 
-            ResourceLocation location = new ResourceLocation(NickHider.MOD_ID, "cached_skin/" + normalizedUsername);
+            Object location = createResourceLocation(NickHider.MOD_ID, "cached_skin/" + normalizedUsername);
             Minecraft minecraft = Minecraft.getInstance();
             TextureManager textureManager = minecraft.getTextureManager();
-            textureManager.register(location, new DynamicTexture(processed));
+            registerTexture(textureManager, location, createDynamicTexture(processed));
 
-            ResourceLocation capeLocation = registerOptionalTexture(capePath, "cached_cape/" + normalizedUsername, textureManager);
-            ResourceLocation elytraLocation = registerOptionalTexture(elytraPath, "cached_elytra/" + normalizedUsername, textureManager);
+            Object capeLocation = registerOptionalTexture(capePath, "cached_cape/" + normalizedUsername, textureManager);
+            Object elytraLocation = registerOptionalTexture(elytraPath, "cached_elytra/" + normalizedUsername, textureManager);
             return new ResolvedSkin(location, modelName, capeLocation, elytraLocation);
         } catch (IOException ex) {
             NickHider.LOGGER.warn("Failed to load cached skin {}", pngPath, ex);
@@ -291,15 +293,15 @@ public final class SkinResolutionService {
         }
     }
 
-    private ResourceLocation registerOptionalTexture(Path path, String textureKey, TextureManager textureManager) {
+    private Object registerOptionalTexture(Path path, String textureKey, TextureManager textureManager) {
         if (!Files.exists(path)) {
             return null;
         }
 
         try (InputStream input = Files.newInputStream(path)) {
             NativeImage image = NativeImage.read(input);
-            ResourceLocation location = new ResourceLocation(NickHider.MOD_ID, textureKey);
-            textureManager.register(location, new DynamicTexture(image));
+            Object location = createResourceLocation(NickHider.MOD_ID, textureKey);
+            registerTexture(textureManager, location, createDynamicTexture(image));
             return location;
         } catch (IOException ex) {
             NickHider.LOGGER.warn("Failed to load cached texture {}", path, ex);
@@ -367,7 +369,7 @@ public final class SkinResolutionService {
     private static void doNotchTransparencyHack(NativeImage image, int minX, int minY, int maxX, int maxY) {
         for (int x = minX; x < maxX; x++) {
             for (int y = minY; y < maxY; y++) {
-                int pixel = image.getPixelRGBA(x, y);
+                int pixel = getPixel(image, x, y);
                 if (((pixel >> 24) & 255) < 128) {
                     return;
                 }
@@ -376,7 +378,7 @@ public final class SkinResolutionService {
 
         for (int x = minX; x < maxX; x++) {
             for (int y = minY; y < maxY; y++) {
-                image.setPixelRGBA(x, y, image.getPixelRGBA(x, y) & 0x00FFFFFF);
+                setPixel(image, x, y, getPixel(image, x, y) & 0x00FFFFFF);
             }
         }
     }
@@ -384,15 +386,135 @@ public final class SkinResolutionService {
     private static void setNoAlpha(NativeImage image, int minX, int minY, int maxX, int maxY) {
         for (int x = minX; x < maxX; x++) {
             for (int y = minY; y < maxY; y++) {
-                image.setPixelRGBA(x, y, image.getPixelRGBA(x, y) | 0xFF000000);
+                setPixel(image, x, y, getPixel(image, x, y) | 0xFF000000);
             }
         }
     }
 
     private ResolvedSkin defaultSkin(UUID fallbackUuid) {
-        ResourceLocation location = DefaultPlayerSkin.getDefaultSkin(fallbackUuid);
-        String modelName = DefaultPlayerSkin.getSkinModelName(fallbackUuid);
+        Object location = resolveDefaultSkinLocation(fallbackUuid);
+        String modelName = resolveDefaultSkinModel(fallbackUuid);
         return new ResolvedSkin(location, modelName, null, null);
+    }
+
+    private static int getPixel(NativeImage image, int x, int y) {
+        try {
+            Method method = NativeImage.class.getMethod("getPixelRGBA", int.class, int.class);
+            return (int) method.invoke(image, x, y);
+        } catch (ReflectiveOperationException ignored) {}
+
+        try {
+            Method method = NativeImage.class.getMethod("getPixel", int.class, int.class);
+            return (int) method.invoke(image, x, y);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("Unable to read native image pixel", ex);
+        }
+    }
+
+    private static void setPixel(NativeImage image, int x, int y, int value) {
+        try {
+            Method method = NativeImage.class.getMethod("setPixelRGBA", int.class, int.class, int.class);
+            method.invoke(image, x, y, value);
+            return;
+        } catch (ReflectiveOperationException ignored) {}
+
+        try {
+            Method method = NativeImage.class.getMethod("setPixel", int.class, int.class, int.class);
+            method.invoke(image, x, y, value);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("Unable to write native image pixel", ex);
+        }
+    }
+
+    private static Object createResourceLocation(String namespace, String path) {
+        try {
+            Class<?> resourceLocationClass = Class.forName("net.minecraft.resources.ResourceLocation");
+            return constructResourceLocation(resourceLocationClass, namespace, path);
+        } catch (ReflectiveOperationException ignored) {}
+
+        try {
+            Class<?> identifierClass = Class.forName("net.minecraft.util.Identifier");
+            return constructResourceLocation(identifierClass, namespace, path);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("Unable to create resource identifier", ex);
+        }
+    }
+
+    private static Object constructResourceLocation(Class<?> locationClass, String namespace, String path) throws ReflectiveOperationException {
+        try {
+            Constructor<?> ctor = locationClass.getDeclaredConstructor(String.class, String.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(namespace, path);
+        } catch (NoSuchMethodException ignored) {}
+
+        for (String methodName : new String[] {"fromNamespaceAndPath", "of", "tryBuild"}) {
+            try {
+                Method method = locationClass.getMethod(methodName, String.class, String.class);
+                return method.invoke(null, namespace, path);
+            } catch (NoSuchMethodException ignored) {}
+        }
+
+        Method parseMethod = locationClass.getMethod("parse", String.class);
+        return parseMethod.invoke(null, namespace + ":" + path);
+    }
+
+    private static DynamicTexture createDynamicTexture(NativeImage image) {
+        try {
+            Constructor<DynamicTexture> ctor = DynamicTexture.class.getConstructor(NativeImage.class);
+            return ctor.newInstance(image);
+        } catch (ReflectiveOperationException ignored) {}
+
+        try {
+            Constructor<DynamicTexture> ctor = DynamicTexture.class.getConstructor(Supplier.class, NativeImage.class);
+            @SuppressWarnings("unchecked")
+            Supplier<String> idSupplier = () -> "nickhider-runtime";
+            return ctor.newInstance(idSupplier, image);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("Unable to create dynamic texture", ex);
+        }
+    }
+
+    private static void registerTexture(TextureManager textureManager, Object location, DynamicTexture texture) {
+        for (Method method : textureManager.getClass().getMethods()) {
+            if (!"register".equals(method.getName()) || method.getParameterCount() != 2) {
+                continue;
+            }
+            if (!method.getParameterTypes()[1].isAssignableFrom(texture.getClass())) {
+                continue;
+            }
+            try {
+                method.invoke(textureManager, location, texture);
+                return;
+            } catch (ReflectiveOperationException ignored) {}
+        }
+        throw new IllegalStateException("Unable to register texture for current Minecraft version");
+    }
+
+    private static Object resolveDefaultSkinLocation(UUID fallbackUuid) {
+        try {
+            Method method = DefaultPlayerSkin.class.getMethod("getDefaultSkin", UUID.class);
+            return method.invoke(null, fallbackUuid);
+        } catch (ReflectiveOperationException ignored) {}
+
+        for (String methodName : new String[] {"getDefaultSkin", "getDefaultTexture"}) {
+            try {
+                Method method = DefaultPlayerSkin.class.getMethod(methodName);
+                return method.invoke(null);
+            } catch (ReflectiveOperationException ignored) {}
+        }
+
+        throw new IllegalStateException("Unable to resolve default skin location");
+    }
+
+    private static String resolveDefaultSkinModel(UUID fallbackUuid) {
+        try {
+            Method method = DefaultPlayerSkin.class.getMethod("getSkinModelName", UUID.class);
+            Object value = method.invoke(null, fallbackUuid);
+            if (value instanceof String str) {
+                return str;
+            }
+        } catch (ReflectiveOperationException ignored) {}
+        return ResolvedSkin.MODEL_DEFAULT;
     }
 
     private record SkinLookupResult(String skinUrl, String modelName, String capeUrl, String elytraUrl) {}

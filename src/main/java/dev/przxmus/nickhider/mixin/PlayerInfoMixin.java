@@ -2,13 +2,13 @@ package dev.przxmus.nickhider.mixin;
 
 import com.mojang.authlib.GameProfile;
 import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import dev.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.core.ProfileCompat;
 import dev.przxmus.nickhider.core.ResolvedSkin;
 
 @Mixin(PlayerInfo.class)
@@ -17,13 +17,15 @@ public abstract class PlayerInfoMixin {
     public abstract GameProfile getProfile();
 
     @Inject(method = "getSkinLocation", at = @At("HEAD"), cancellable = true)
-    private void nickhider$overrideSkinLocation(CallbackInfoReturnable<ResourceLocation> cir) {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void nickhider$overrideSkinLocation(CallbackInfoReturnable cir) {
         GameProfile profile = this.getProfile();
-        if (profile == null || profile.getId() == null) {
+        java.util.UUID profileId = ProfileCompat.id(profile);
+        if (profileId == null) {
             return;
         }
 
-        NickHider.runtime().replacementSkin(profile.getId())
+        NickHider.runtime().replacementSkin(profileId)
                 .map(ResolvedSkin::textureLocation)
                 .ifPresent(cir::setReturnValue);
     }
@@ -31,35 +33,40 @@ public abstract class PlayerInfoMixin {
     @Inject(method = "getModelName", at = @At("HEAD"), cancellable = true)
     private void nickhider$overrideSkinModel(CallbackInfoReturnable<String> cir) {
         GameProfile profile = this.getProfile();
-        if (profile == null || profile.getId() == null) {
+        java.util.UUID profileId = ProfileCompat.id(profile);
+        if (profileId == null) {
             return;
         }
 
-        NickHider.runtime().replacementSkin(profile.getId())
+        NickHider.runtime().replacementSkin(profileId)
                 .map(ResolvedSkin::modelName)
                 .ifPresent(cir::setReturnValue);
     }
 
     @Inject(method = "getCapeLocation", at = @At("HEAD"), cancellable = true)
-    private void nickhider$overrideCapeLocation(CallbackInfoReturnable<ResourceLocation> cir) {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void nickhider$overrideCapeLocation(CallbackInfoReturnable cir) {
         GameProfile profile = this.getProfile();
-        if (profile == null || profile.getId() == null || !NickHider.runtime().shouldOverrideCape(profile.getId())) {
+        java.util.UUID profileId = ProfileCompat.id(profile);
+        if (profileId == null || !NickHider.runtime().shouldOverrideCape(profileId)) {
             return;
         }
 
-        NickHider.runtime().replacementCape(profile.getId())
+        NickHider.runtime().replacementCape(profileId)
                 .map(ResolvedSkin::capeTextureLocation)
                 .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
     }
 
     @Inject(method = "getElytraLocation", at = @At("HEAD"), cancellable = true)
-    private void nickhider$overrideElytraLocation(CallbackInfoReturnable<ResourceLocation> cir) {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void nickhider$overrideElytraLocation(CallbackInfoReturnable cir) {
         GameProfile profile = this.getProfile();
-        if (profile == null || profile.getId() == null || !NickHider.runtime().shouldOverrideCape(profile.getId())) {
+        java.util.UUID profileId = ProfileCompat.id(profile);
+        if (profileId == null || !NickHider.runtime().shouldOverrideCape(profileId)) {
             return;
         }
 
-        NickHider.runtime().replacementCape(profile.getId())
+        NickHider.runtime().replacementCape(profileId)
                 .map(ResolvedSkin::elytraTextureLocation)
                 .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
     }

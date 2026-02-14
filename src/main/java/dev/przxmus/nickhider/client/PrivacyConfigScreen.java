@@ -2,6 +2,7 @@ package dev.przxmus.nickhider.client;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.lang.reflect.Method;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -224,10 +225,19 @@ public final class PrivacyConfigScreen extends Screen {
         this.minecraft.setScreen(this.parent);
     }
 
-    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        return handleMouseScroll(mouseX, mouseY, delta);
+    }
+
+    /*? if >=1.20.2 {*/
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        return handleMouseScroll(mouseX, mouseY, verticalAmount);
+    }
+    /*?}*/
+
+    private boolean handleMouseScroll(double mouseX, double mouseY, double delta) {
         if (mouseY < this.contentTop || mouseY > this.contentBottom || this.maxScroll <= 0) {
-            return super.mouseScrolled(mouseX, mouseY, delta);
+            return false;
         }
 
         int nextOffset = this.scrollOffset - (int) Math.round(delta * 18.0);
@@ -238,7 +248,7 @@ public final class PrivacyConfigScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(graphics);
+        renderBackgroundCompat(graphics, mouseX, mouseY, partialTick);
         super.render(graphics, mouseX, mouseY, partialTick);
 
         int centerX = this.width / 2;
@@ -258,6 +268,21 @@ public final class PrivacyConfigScreen extends Screen {
 
         if (this.maxScroll > 0) {
             drawScrollbar(graphics);
+        }
+    }
+
+    private void renderBackgroundCompat(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        try {
+            Method modern = Screen.class.getMethod("renderBackground", GuiGraphics.class, int.class, int.class, float.class);
+            modern.invoke(this, graphics, mouseX, mouseY, partialTick);
+            return;
+        } catch (ReflectiveOperationException ignored) {}
+
+        try {
+            Method legacy = Screen.class.getMethod("renderBackground", GuiGraphics.class);
+            legacy.invoke(this, graphics);
+        } catch (ReflectiveOperationException ignored) {
+            // No known background method available on this version.
         }
     }
 

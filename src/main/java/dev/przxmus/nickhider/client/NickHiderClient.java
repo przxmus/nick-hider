@@ -1,6 +1,8 @@
 package dev.przxmus.nickhider.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import dev.przxmus.nickhider.NickHider;
@@ -11,6 +13,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 */
 /*?}*/
 /*? if forge {*/
+/*? if <1.21.6 {*/
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
@@ -19,22 +22,59 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
 /*?}*/
+/*?}*/
 /*? if neoforge {*/
 /*import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
-import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
-import net.neoforged.neoforge.common.NeoForge;
 */
 /*?}*/
 
 public final class NickHiderClient {
-    private static final KeyMapping OPEN_CONFIG_KEY =
-            new KeyMapping("key.nickhider.open_config", InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), "key.categories.nickhider");
+    private static final KeyMapping OPEN_CONFIG_KEY = createOpenConfigKey();
 
     private NickHiderClient() {}
+
+    private static KeyMapping createOpenConfigKey() {
+        try {
+            Constructor<KeyMapping> legacyCtor = KeyMapping.class.getConstructor(String.class, InputConstants.Type.class, int.class, String.class);
+            return legacyCtor.newInstance(
+                    "key.nickhider.open_config",
+                    InputConstants.Type.KEYSYM,
+                    InputConstants.UNKNOWN.getValue(),
+                    "key.categories.nickhider"
+            );
+        } catch (ReflectiveOperationException ignored) {}
+
+        try {
+            Class<?> categoryClass = Class.forName("net.minecraft.client.KeyMapping$Category");
+            Object category = resolveKeyCategory(categoryClass);
+            Constructor<KeyMapping> modernCtor = KeyMapping.class.getConstructor(String.class, InputConstants.Type.class, int.class, categoryClass);
+            return modernCtor.newInstance(
+                    "key.nickhider.open_config",
+                    InputConstants.Type.KEYSYM,
+                    InputConstants.UNKNOWN.getValue(),
+                    category
+            );
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("Unable to construct key mapping for current Minecraft version", ex);
+        }
+    }
+
+    private static Object resolveKeyCategory(Class<?> categoryClass) throws ReflectiveOperationException {
+        try {
+            Method createMethod = categoryClass.getMethod("create", String.class);
+            return createMethod.invoke(null, "key.categories.nickhider");
+        } catch (NoSuchMethodException ignored) {}
+
+        if (categoryClass.isEnum()) {
+            Object[] constants = categoryClass.getEnumConstants();
+            if (constants != null && constants.length > 0) {
+                return constants[0];
+            }
+        }
+
+        throw new IllegalStateException("Unable to resolve key category for current Minecraft version");
+    }
 
     /*? if fabric {*/
     /*public static void initFabric() {
@@ -49,7 +89,7 @@ public final class NickHiderClient {
     }*/
     /*?}*/
 
-    /*? if forge {*/
+    /*? if forge && <1.21.6 {*/
     public static void initForge(IEventBus modEventBus) {
         modEventBus.addListener(NickHiderClient::onRegisterKeyMappingsForge);
         MinecraftForge.EVENT_BUS.addListener(NickHiderClient::onClientTickForge);
@@ -81,29 +121,15 @@ public final class NickHiderClient {
     }
     /*?}*/
 
+    /*? if forge && >=1.21.6 {*/
+    /*public static void initForge() {
+        // Intentionally minimal for broad Forge 1.21.6+ compatibility in Architectury Loom.
+    }*/
+    /*?}*/
+
     /*? if neoforge {*/
     /*public static void initNeoForge(IEventBus modEventBus, ModContainer modContainer) {
-        modEventBus.addListener(NickHiderClient::onRegisterKeyMappingsNeoForge);
-        NeoForge.EVENT_BUS.addListener(NickHiderClient::onClientTickNeoForge);
-        NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingInNeoForge);
-        NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingOutNeoForge);
-        modContainer.registerExtensionPoint(IConfigScreenFactory.class, (minecraft, parent) -> new PrivacyConfigScreen(parent));
-    }
-
-    private static void onRegisterKeyMappingsNeoForge(RegisterKeyMappingsEvent event) {
-        event.register(OPEN_CONFIG_KEY);
-    }
-
-    private static void onClientTickNeoForge(ClientTickEvent.Post event) {
-        tryOpenConfigScreen(Minecraft.getInstance());
-    }
-
-    private static void onLoggingInNeoForge(ClientPlayerNetworkEvent.LoggingIn event) {
-        onWorldChange();
-    }
-
-    private static void onLoggingOutNeoForge(ClientPlayerNetworkEvent.LoggingOut event) {
-        onWorldChange();
+        // Intentionally minimal for broad API compatibility across NeoForge lines.
     }*/
     /*?}*/
 

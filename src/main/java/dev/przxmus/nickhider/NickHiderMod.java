@@ -8,7 +8,9 @@ import net.fabricmc.loader.api.FabricLoader;
 /*? if forge {*/
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLPaths;
+/*? if <1.21.6 {*/
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+/*?}*/
 /*?}*/
 /*? if neoforge {*/
 /*import net.neoforged.bus.api.IEventBus;
@@ -37,7 +39,12 @@ public final class NickHiderMod {
     /*? if forge {*/
     public NickHiderMod() {
         NickHider.bootstrap(FMLPaths.CONFIGDIR.get());
+        /*? if <1.21.6 {*/
         NickHiderClient.initForge(FMLJavaModLoadingContext.get().getModEventBus());
+        /*?}*/
+        /*? if >=1.21.6 {*/
+        /*NickHiderClient.initForge();*/
+        /*?}*/
     }
     /*?}*/
 
