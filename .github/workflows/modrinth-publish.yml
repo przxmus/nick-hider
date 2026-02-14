@@ -20,6 +20,7 @@ jobs:
       skipped_existing_count: ${{ steps.prepare.outputs.skipped_existing_count }}
       to_publish_count: ${{ steps.prepare.outputs.to_publish_count }}
       total_jar_count: ${{ steps.prepare.outputs.total_jar_count }}
+      existing_lookup_enabled: ${{ steps.prepare.outputs.existing_lookup_enabled }}
     steps:
       - name: Validate required secrets
         env:
@@ -75,21 +76,6 @@ jobs:
           fi
 
           project_ref_encoded="$(jq -rn --arg v "${project_ref}" '$v|@uri')"
-
-          project_http_status="$(
-            curl -sS \
-              -o modrinth_project_response.json \
-              -w '%{http_code}' \
-              -H "Authorization: ${MODRINTH_TOKEN}" \
-              -H "User-Agent: github-actions/${GITHUB_REPOSITORY}" \
-              "https://api.modrinth.com/v2/project/${project_ref_encoded}"
-          )"
-          if [ "${project_http_status}" != "200" ]; then
-            echo "Failed to resolve Modrinth project '${project_ref}' (from MODRINTH_PROJECT_ID). HTTP ${project_http_status}."
-            echo "Set MODRINTH_PROJECT_ID to a valid Modrinth project ID or slug."
-            cat modrinth_project_response.json || true
-            exit 1
-          fi
 
           releases_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
           selected_release="$(
@@ -199,6 +185,7 @@ jobs:
             exit 1
           fi
 
+          existing_lookup_enabled="true"
           modrinth_versions_http_status="$(
             curl -sS \
               -o modrinth_versions_response.json \
@@ -207,16 +194,24 @@ jobs:
               -H "User-Agent: github-actions/${GITHUB_REPOSITORY}" \
               "https://api.modrinth.com/v2/project/${project_ref_encoded}/version"
           )"
-          if [ "${modrinth_versions_http_status}" != "200" ]; then
+          if [ "${modrinth_versions_http_status}" = "200" ]; then
+            modrinth_versions_json="$(cat modrinth_versions_response.json)"
+            printf '%s' "${modrinth_versions_json}" \
+              | jq -r '.[].version_number // empty' \
+              | sort -u > existing_version_numbers.txt
+          elif [ "${modrinth_versions_http_status}" = "404" ] || [ "${modrinth_versions_http_status}" = "403" ]; then
+            # Under-review or restricted projects can return 404/403 on read endpoints.
+            # In this case we continue without duplicate pre-filtering and rely on publish responses.
+            existing_lookup_enabled="false"
+            : > existing_version_numbers.txt
+            echo "Warning: could not read existing Modrinth versions for '${project_ref}' (HTTP ${modrinth_versions_http_status})."
+            echo "Continuing without pre-skip of existing versions."
+            cat modrinth_versions_response.json || true
+          else
             echo "Failed to fetch Modrinth versions for '${project_ref}'. HTTP ${modrinth_versions_http_status}."
             cat modrinth_versions_response.json || true
             exit 1
           fi
-          modrinth_versions_json="$(cat modrinth_versions_response.json)"
-
-          printf '%s' "${modrinth_versions_json}" \
-            | jq -r '.[].version_number // empty' \
-            | sort -u > existing_version_numbers.txt
 
           > publish_items.jsonl
           skipped_existing_count=0
@@ -248,6 +243,7 @@ jobs:
             echo "skipped_existing_count=${skipped_existing_count}"
             echo "to_publish_count=${to_publish_count}"
             echo "total_jar_count=${#jar_paths[@]}"
+            echo "existing_lookup_enabled=${existing_lookup_enabled}"
             echo "release_body<<EOF"
             printf '%s\n' "${release_body}"
             echo "EOF"
@@ -308,6 +304,7 @@ jobs:
           echo "Resolved Modrinth project: ${{ needs.prepare.outputs.modrinth_project }}"
           echo "Selected release is prerelease: ${{ needs.prepare.outputs.selected_is_prerelease }}"
           echo "Modrinth channel: ${{ needs.prepare.outputs.release_channel }}"
+          echo "Existing-version lookup enabled: ${{ needs.prepare.outputs.existing_lookup_enabled }}"
           echo "Total jars discovered: ${{ needs.prepare.outputs.total_jar_count }}"
           echo "Versions skipped as existing: ${{ needs.prepare.outputs.skipped_existing_count }}"
           echo "Versions published: ${published_count}"
@@ -321,6 +318,7 @@ jobs:
             echo "- Resolved Modrinth project: \`${{ needs.prepare.outputs.modrinth_project }}\`"
             echo "- Selected release is prerelease: \`${{ needs.prepare.outputs.selected_is_prerelease }}\`"
             echo "- Modrinth channel: \`${{ needs.prepare.outputs.release_channel }}\`"
+            echo "- Existing-version lookup enabled: \`${{ needs.prepare.outputs.existing_lookup_enabled }}\`"
             echo "- Total jars discovered: \`${{ needs.prepare.outputs.total_jar_count }}\`"
             echo "- Versions skipped as existing: \`${{ needs.prepare.outputs.skipped_existing_count }}\`"
             echo "- Versions published: \`${published_count}\`"
