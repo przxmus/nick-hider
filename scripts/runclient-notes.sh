@@ -168,6 +168,23 @@ cleanup_parser() {
   fi
 }
 
+kill_process_tree() {
+  local pid="$1"
+  local child
+  local children=""
+
+  if command -v pgrep >/dev/null 2>&1; then
+    children="$(pgrep -P "$pid" 2>/dev/null || true)"
+    for child in $children; do
+      kill_process_tree "$child"
+    done
+  fi
+
+  kill "$pid" 2>/dev/null || true
+  sleep 1
+  kill -9 "$pid" 2>/dev/null || true
+}
+
 for idx in "${!projects[@]}"; do
   proj="${projects[$idx]}"
   log_file="$logs_dir/${proj}.log"
@@ -223,17 +240,20 @@ for idx in "${!projects[@]}"; do
     if IFS= read -r -t 1 cmd; then
       if [[ "$cmd" == "/next" ]]; then
         echo "[$((idx + 1))/$total] USER_SKIP $proj"
-        kill "$gradle_pid" 2>/dev/null || true
-        sleep 1
-        kill -9 "$gradle_pid" 2>/dev/null || true
+        kill_process_tree "$gradle_pid"
         user_skip=true
         break
       fi
     fi
   done
 
-  wait "$gradle_pid"
-  exit_code=$?
+  if [[ "$user_skip" == true ]]; then
+    wait "$gradle_pid" 2>/dev/null || true
+    exit_code=130
+  else
+    wait "$gradle_pid"
+    exit_code=$?
+  fi
   set -e
 
   cleanup_parser "$parser_pid"
