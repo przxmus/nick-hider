@@ -10,13 +10,17 @@
   ],
   "contact": {
     "homepage": "https://github.com/przxmus/nick-hider",
-    "sources": "https://github.com/przxmus/nick-hider"
+    "sources": "https://github.com/przxmus/nick-hider",
+    "issues": "https://github.com/przxmus/nick-hider/issues"
   },
   "license": "GNU Affero General Public License v3.0",
   "environment": "*",
   "entrypoints": {
     "main": [
       "${group}.NickHiderMod"
+    ],
+    "modmenu": [
+      "${group}.client.NickHiderModMenuApi"
     ]
   },
   "mixins": [

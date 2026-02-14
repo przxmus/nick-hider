@@ -47,6 +47,7 @@ Copyright (c) 2026 przxmus
 
 Settings are available in-game:
 
+- Fabric Mod Menu config button (when Mod Menu is installed)
 - Forge/NeoForge Mod List config screen
 - Keybind entry (`Open Nick Hider Settings`, default unbound)
 

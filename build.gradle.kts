@@ -43,6 +43,7 @@ repositories {
     maven {
         url = uri(rootProject.layout.projectDirectory.dir(".local-maven"))
     }
+    maven("https://api.modrinth.com/maven")
 }
 
 configurations.configureEach {
@@ -55,13 +56,19 @@ configurations.configureEach {
 // Example of overriding publishing settings
 publishMods {
     modrinth {
-        if (mod.isFabric) requires("fabric-api")
+        if (mod.isFabric) {
+            requires("fabric-api")
+            optional("modmenu")
+        }
     }
 
     curseforge {
         clientRequired = true // Set as needed
         serverRequired = false // Set as needed
-        if (mod.isFabric) requires("fabric-api")
+        if (mod.isFabric) {
+            requires("fabric-api")
+            optional("modmenu")
+        }
     }
 }
 
@@ -74,6 +81,11 @@ loom {
 }
 
 dependencies {
+    val modmenuVersion = findProperty("modmenu_version")?.toString()
+    if (mod.isFabric && !modmenuVersion.isNullOrBlank()) {
+        modCompileOnly("maven.modrinth:modmenu:$modmenuVersion")
+    }
+
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
