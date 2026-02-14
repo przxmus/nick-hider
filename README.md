@@ -1,6 +1,6 @@
 # Nick Hider
 
-Client-side privacy mod for Minecraft that masks player names and skins in common vanilla client paths.
+Client-side privacy mod for Minecraft that masks player names, skins and capes in common vanilla client paths.
 
 Copyright (c) 2026 przxmus
 
@@ -23,6 +23,7 @@ Roadmap: the project is structured for future MultiLoader/MultiVersion expansion
 - Global enable/disable switch for all masking behavior.
 
 Settings are available in-game:
+
 - Forge Mod List config screen
 - Keybind entry (`Open Nick Hider Settings`, default unbound)
 
@@ -45,6 +46,7 @@ The config exposes only these fields:
 - `Enable Nick Hider`
 
 Cape fallback behavior:
+
 - If cape masking is enabled but no valid cape source can be resolved, cape rendering is hidden instead of falling back to the original cape.
 
 ## Installation
