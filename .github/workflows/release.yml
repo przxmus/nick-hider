@@ -129,7 +129,7 @@ jobs:
 
             if [ -n "${RUN_ID}" ]; then
               STATUS="$(gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json status --jq '.status')"
-              CONCLUSION="$(gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json conclusion --jq '.conclusion // \"\"')"
+              CONCLUSION="$(gh run view "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --json conclusion --jq '.conclusion // ""')"
               echo "CI Build run ${RUN_ID}: status=${STATUS} conclusion=${CONCLUSION}"
 
               if [ "${STATUS}" = "completed" ]; then
