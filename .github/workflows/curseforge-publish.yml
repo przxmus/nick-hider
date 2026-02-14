@@ -194,10 +194,6 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.has_work == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        item: ${{ fromJson(needs.prepare.outputs.publish_matrix) }}
     steps:
       - name: Download selected release jars
         uses: actions/download-artifact@v4
@@ -223,18 +219,152 @@ jobs:
             fi
           done
 
-      - name: Publish version to CurseForge
-        uses: itsmeow/curseforge-upload@v3
-        with:
-          token: ${{ secrets.CURSEFORGE_TOKEN }}
-          project_id: ${{ secrets.CURSEFORGE_PROJECT_ID }}
-          game_endpoint: minecraft
-          file_path: ${{ matrix.item.file_path }}
-          display_name: ${{ matrix.item.display_name }}
-          changelog: ${{ needs.prepare.outputs.release_body }}
-          changelog_type: markdown
-          release_type: ${{ needs.prepare.outputs.release_type }}
-          game_versions: ${{ matrix.item.game_versions }}
+      - name: Publish versions to CurseForge (batched, single job)
+        env:
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          CURSEFORGE_PROJECT_ID: ${{ secrets.CURSEFORGE_PROJECT_ID }}
+          RELEASE_TYPE: ${{ needs.prepare.outputs.release_type }}
+          RELEASE_BODY: ${{ needs.prepare.outputs.release_body }}
+          PUBLISH_MATRIX: ${{ needs.prepare.outputs.publish_matrix }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PUBLISH_MATRIX}" ] || [ "${PUBLISH_MATRIX}" = "[]" ]; then
+            echo "No CurseForge items to publish."
+            exit 0
+          fi
+
+          total="$(printf '%s' "${PUBLISH_MATRIX}" | jq 'length')"
+          if [ "${total}" -eq 0 ]; then
+            echo "No CurseForge items to publish."
+            exit 0
+          fi
+
+          versions_json="$(curl -sS -H "X-Api-Token: ${CURSEFORGE_TOKEN}" "https://minecraft.curseforge.com/api/game/versions")"
+          types_json="$(curl -sS -H "X-Api-Token: ${CURSEFORGE_TOKEN}" "https://minecraft.curseforge.com/api/game/version-types")"
+
+          resolve_game_versions() {
+            local csv="$1"
+            local IFS=','
+            read -ra tokens <<< "${csv}"
+            local ids=()
+
+            for raw in "${tokens[@]}"; do
+              token="$(printf '%s' "${raw}" | sed -E 's/^[[:space:]]+//;s/[[:space:]]+$//')"
+              [ -n "${token}" ] || continue
+
+              if [[ "${token}" =~ ^[0-9]+$ ]]; then
+                ids+=("${token}")
+                continue
+              fi
+
+              type_hint="blank"
+              lookup="${token}"
+              if [[ "${token}" == *:* ]]; then
+                type_hint="${token%%:*}"
+                lookup="${token#*:}"
+              fi
+
+              type_id=""
+              if [ "${type_hint}" != "blank" ]; then
+                if [[ "${type_hint}" =~ ^[0-9]+$ ]]; then
+                  type_id="${type_hint}"
+                else
+                  type_id="$(
+                    printf '%s' "${types_json}" \
+                      | jq -r --arg v "${type_hint}" '.[] | select(.name == $v or .slug == $v) | .id' \
+                      | head -n1
+                  )"
+                fi
+              fi
+
+              mapfile -t matched_ids < <(
+                printf '%s' "${versions_json}" \
+                  | jq -r --arg v "${lookup}" --arg tid "${type_id}" '
+                      .[]
+                      | select(.name == $v or .slug == $v)
+                      | select($tid == "" or (.gameVersionTypeID|tostring) == $tid)
+                      | .id
+                    '
+              )
+
+              if [ "${#matched_ids[@]}" -eq 0 ]; then
+                echo "Could not resolve CurseForge game version token: ${token}" >&2
+                return 1
+              fi
+
+              for id in "${matched_ids[@]}"; do
+                ids+=("${id}")
+              done
+            done
+
+            printf '%s\n' "${ids[@]}" | awk 'NF' | sort -u | paste -sd ',' -
+          }
+
+          published=0
+          failed=0
+
+          while IFS= read -r item; do
+            [ -n "${item}" ] || continue
+
+            display_name="$(printf '%s' "${item}" | jq -r '.display_name')"
+            file_path="$(printf '%s' "${item}" | jq -r '.file_path')"
+            game_versions_csv="$(printf '%s' "${item}" | jq -r '.game_versions')"
+
+            if [ ! -f "${file_path}" ]; then
+              echo "Missing file for ${display_name}: ${file_path}"
+              failed=$((failed + 1))
+              continue
+            fi
+
+            if ! game_version_ids_csv="$(resolve_game_versions "${game_versions_csv}")"; then
+              echo "Failed to resolve game versions for ${display_name}"
+              failed=$((failed + 1))
+              continue
+            fi
+
+            metadata_json="$(
+              jq -nc \
+                --arg changelog "${RELEASE_BODY}" \
+                --arg display_name "${display_name}" \
+                --arg release_type "${RELEASE_TYPE}" \
+                --argjson game_versions "$(printf '%s' "${game_version_ids_csv}" | jq -R 'split(",") | map(tonumber)')" \
+                '{
+                  changelog: $changelog,
+                  changelogType: "markdown",
+                  displayName: $display_name,
+                  releaseType: $release_type,
+                  gameVersions: $game_versions
+                }'
+            )"
+
+            echo "Publishing CurseForge: ${display_name} ($(basename "${file_path}"))"
+            http_code="$(
+              curl -sS \
+                -o curseforge_response.json \
+                -w '%{http_code}' \
+                -X POST "https://minecraft.curseforge.com/api/projects/${CURSEFORGE_PROJECT_ID}/upload-file" \
+                -H "X-Api-Token: ${CURSEFORGE_TOKEN}" \
+                -F "file=@${file_path};type=application/java-archive" \
+                -F "metadata=${metadata_json}"
+            )"
+
+            if [ "${http_code}" = "200" ]; then
+              file_id="$(jq -r '.id // empty' curseforge_response.json)"
+              echo "Published CurseForge file id=${file_id} for ${display_name}."
+              published=$((published + 1))
+            else
+              echo "Failed CurseForge publish for ${display_name}. HTTP ${http_code}"
+              cat curseforge_response.json || true
+              failed=$((failed + 1))
+            fi
+          done < <(printf '%s' "${PUBLISH_MATRIX}" | jq -c '.[]')
+
+          echo "CurseForge publish result: published=${published} failed=${failed} total=${total}"
+          if [ "${failed}" -ne 0 ]; then
+            exit 1
+          fi
 
   summary:
     needs: [prepare, publish]

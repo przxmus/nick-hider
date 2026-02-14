@@ -266,10 +266,6 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.has_work == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        item: ${{ fromJson(needs.prepare.outputs.publish_matrix) }}
     steps:
       - name: Download selected release jars
         uses: actions/download-artifact@v4
@@ -295,20 +291,100 @@ jobs:
             fi
           done
 
-      - name: Publish version to Modrinth
-        uses: cloudnode-pro/modrinth-publish@v2
-        with:
-          token: ${{ secrets.MODRINTH_TOKEN }}
-          project: ${{ needs.prepare.outputs.modrinth_project }}
-          version: ${{ matrix.item.version_number }}
-          name: ${{ matrix.item.version_name }}
-          channel: ${{ needs.prepare.outputs.release_channel }}
-          changelog: ${{ needs.prepare.outputs.release_body }}
-          loaders: ${{ matrix.item.loader }}
-          game-versions: ${{ matrix.item.mc_version }}
-          files: ${{ matrix.item.file_path }}
-          primary-file: ${{ matrix.item.file_name }}
-          status: listed
+      - name: Publish versions to Modrinth (batched, single job)
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_PROJECT: ${{ needs.prepare.outputs.modrinth_project }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+          RELEASE_BODY: ${{ needs.prepare.outputs.release_body }}
+          PUBLISH_MATRIX: ${{ needs.prepare.outputs.publish_matrix }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PUBLISH_MATRIX}" ] || [ "${PUBLISH_MATRIX}" = "[]" ]; then
+            echo "No Modrinth items to publish."
+            exit 0
+          fi
+
+          total="$(printf '%s' "${PUBLISH_MATRIX}" | jq 'length')"
+          if [ "${total}" -eq 0 ]; then
+            echo "No Modrinth items to publish."
+            exit 0
+          fi
+
+          published=0
+          failed=0
+
+          while IFS= read -r item; do
+            [ -n "${item}" ] || continue
+
+            loader="$(printf '%s' "${item}" | jq -r '.loader')"
+            mc_version="$(printf '%s' "${item}" | jq -r '.mc_version')"
+            version_number="$(printf '%s' "${item}" | jq -r '.version_number')"
+            version_name="$(printf '%s' "${item}" | jq -r '.version_name')"
+            file_path="$(printf '%s' "${item}" | jq -r '.file_path')"
+            file_name="$(printf '%s' "${item}" | jq -r '.file_name')"
+
+            if [ ! -f "${file_path}" ]; then
+              echo "Missing file for ${version_number}: ${file_path}"
+              failed=$((failed + 1))
+              continue
+            fi
+
+            data_json="$(
+              jq -nc \
+                --arg name "${version_name}" \
+                --arg version_number "${version_number}" \
+                --arg changelog "${RELEASE_BODY}" \
+                --arg game_version "${mc_version}" \
+                --arg channel "${RELEASE_CHANNEL}" \
+                --arg loader "${loader}" \
+                --arg project "${MODRINTH_PROJECT}" \
+                --arg file_name "${file_name}" \
+                '{
+                  name: $name,
+                  version_number: $version_number,
+                  changelog: $changelog,
+                  dependencies: [],
+                  game_versions: [$game_version],
+                  version_type: $channel,
+                  loaders: [$loader],
+                  featured: false,
+                  status: "listed",
+                  project_id: $project,
+                  file_parts: [$file_name],
+                  primary_file: $file_name
+                }'
+            )"
+
+            echo "Publishing Modrinth: ${version_number} (${file_name})"
+            http_code="$(
+              curl -sS \
+                -o modrinth_response.json \
+                -w '%{http_code}' \
+                -X POST "https://api.modrinth.com/v2/version" \
+                -H "Authorization: ${MODRINTH_TOKEN}" \
+                -H "User-Agent: github-actions/${GITHUB_REPOSITORY}" \
+                -F "data=${data_json}" \
+                -F "${file_name}=@${file_path};type=application/java-archive"
+            )"
+
+            if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 300 ]; then
+              version_id="$(jq -r '.id // empty' modrinth_response.json)"
+              echo "Published Modrinth version ${version_number} (id=${version_id})."
+              published=$((published + 1))
+            else
+              echo "Failed Modrinth publish for ${version_number}. HTTP ${http_code}"
+              cat modrinth_response.json || true
+              failed=$((failed + 1))
+            fi
+          done < <(printf '%s' "${PUBLISH_MATRIX}" | jq -c '.[]')
+
+          echo "Modrinth publish result: published=${published} failed=${failed} total=${total}"
+          if [ "${failed}" -ne 0 ]; then
+            exit 1
+          fi
 
   summary:
     needs: [prepare, publish]
