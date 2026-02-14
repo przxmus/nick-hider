@@ -2,17 +2,17 @@
   "schemaVersion": 1,
   "id": "${id}",
   "version": "${version}",
-
   "name": "${name}",
   "icon": "assets/${id}/icon.png",
   "description": "${description}",
-  "authors": [],
+  "authors": [
+    "przxmus"
+  ],
   "contact": {
     "homepage": "https://github.com/przxmus/nick-hider",
     "sources": "https://github.com/przxmus/nick-hider"
   },
   "license": "GNU Affero General Public License v3.0",
-
   "environment": "*",
   "entrypoints": {
     "main": [
