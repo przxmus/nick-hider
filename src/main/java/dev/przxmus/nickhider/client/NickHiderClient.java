@@ -5,9 +5,10 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import dev.przxmus.nickhider.NickHider;
 /*? if fabric {*/
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientPlayConnectionEvents;
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+/*import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+*/
 /*?}*/
 /*? if forge {*/
 import net.minecraftforge.client.ConfigScreenHandler;
@@ -36,7 +37,7 @@ public final class NickHiderClient {
     private NickHiderClient() {}
 
     /*? if fabric {*/
-    public static void initFabric() {
+    /*public static void initFabric() {
         KeyBindingHelper.registerKeyBinding(OPEN_CONFIG_KEY);
         ClientTickEvents.END_CLIENT_TICK.register(NickHiderClient::onClientTickFabric);
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> onWorldChange());
@@ -45,7 +46,7 @@ public final class NickHiderClient {
 
     private static void onClientTickFabric(Minecraft minecraft) {
         tryOpenConfigScreen(minecraft);
-    }
+    }*/
     /*?}*/
 
     /*? if forge {*/
