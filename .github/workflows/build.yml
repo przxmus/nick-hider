@@ -53,7 +53,21 @@ jobs:
           LOADER: ${{ matrix.loader }}
         run: |
           set -euo pipefail
-          mapfile -t PROJECTS < <(find versions -mindepth 1 -maxdepth 1 -type d -name "*-${LOADER}" -printf '%f\n' | sort -V)
+          shopt -s nullglob
+          PROJECT_DIRS=(versions/*-"${LOADER}")
+          if [ "${#PROJECT_DIRS[@]}" -eq 0 ]; then
+            echo "No directories matched versions/*-${LOADER}"
+            echo "Available directories in versions/:"
+            ls -la versions || true
+            exit 1
+          fi
+
+          mapfile -t PROJECTS < <(
+            for dir in "${PROJECT_DIRS[@]}"; do
+              basename "${dir}"
+            done | sort -V
+          )
+
           if [ "${#PROJECTS[@]}" -eq 0 ]; then
             echo "No projects found for loader ${LOADER}"
             exit 1
