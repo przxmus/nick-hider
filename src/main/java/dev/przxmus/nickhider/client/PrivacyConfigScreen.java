@@ -18,6 +18,7 @@ import dev.przxmus.nickhider.config.PrivacyConfig;
 public final class PrivacyConfigScreen extends Screen {
     private final Screen parent;
 
+    private boolean enabled;
     private boolean hideLocalName;
     private boolean hideLocalSkin;
     private boolean hideOtherNames;
@@ -45,6 +46,7 @@ public final class PrivacyConfigScreen extends Screen {
         this.parent = parent;
 
         PrivacyConfig config = NickHider.runtime().config();
+        this.enabled = config.enabled;
         this.hideLocalName = config.hideLocalName;
         this.hideLocalSkin = config.hideLocalSkin;
         this.hideOtherNames = config.hideOtherNames;
@@ -69,6 +71,15 @@ public final class PrivacyConfigScreen extends Screen {
         int toggleWidth = (this.formWidth - horizontalGap) / 2;
         int rightToggleX = this.formLeft + toggleWidth + horizontalGap;
         int y = 0;
+
+        CycleButton<Boolean> enabledButton = CycleButton.onOffBuilder(this.enabled)
+                .create(this.formLeft, this.contentTop, this.formWidth, 20, Component.translatable("nickhider.config.enabled"), (button, value) -> {
+                    this.enabled = value;
+                    refreshValidation();
+                });
+        this.addRenderableWidget(enabledButton);
+        addScrollableWidget(enabledButton, y);
+        y += 26;
 
         CycleButton<Boolean> hideLocalNameButton = CycleButton.onOffBuilder(this.hideLocalName)
                 .create(this.formLeft, this.contentTop, toggleWidth, 20, Component.translatable("nickhider.config.hide_local_name"), (button, value) -> {
@@ -153,6 +164,7 @@ public final class PrivacyConfigScreen extends Screen {
 
     private PrivacyConfig collectConfig() {
         PrivacyConfig config = new PrivacyConfig();
+        config.enabled = this.enabled;
         config.hideLocalName = this.hideLocalName;
         config.hideLocalSkin = this.hideLocalSkin;
         config.hideOtherNames = this.hideOtherNames;
