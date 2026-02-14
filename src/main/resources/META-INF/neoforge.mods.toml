@@ -7,6 +7,7 @@ license = "GNU Affero General Public License v3.0"
 modId = "${id}"
 version = "${version}"
 displayName = "${name}"
+displayURL = "https://github.com/przxmus/nick-hider"
 logoFile = "assets/${id}/icon.png"
 authors = "przxmus"
 description = '''
