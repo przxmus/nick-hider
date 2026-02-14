@@ -1,105 +1,98 @@
 # Nick Hider
 
-Client-side privacy mod for Minecraft that masks player names, skins and capes in common vanilla client paths.
+Client-side privacy masking for Minecraft player names, skins, and capes.
 
-Copyright (c) 2026 przxmus
+<p align="center">
+  <img src="src/main/resources/assets/nickhider/icon.png" alt="Nick Hider icon" width="128" height="128">
+</p>
 
-## Current Support
+<p align="center">
+  <img alt="Minecraft" src="https://img.shields.io/badge/Minecraft-1.20%20to%201.21.11-2ea043">
+  <img alt="Side" src="https://img.shields.io/badge/Side-Client-blue">
+  <img alt="Loaders" src="https://img.shields.io/badge/Loaders-Fabric%20%7C%20Forge%20%7C%20NeoForge-orange">
+  <img alt="License" src="https://img.shields.io/badge/License-AGPL--3.0-red">
+</p>
 
+## Download
+
+- [Download on Modrinth](https://modrinth.com/mod/<todo-project-slug>)
+- [Download on CurseForge](https://www.curseforge.com/minecraft/mc-mods/<todo-project-slug>)
+- [Download from GitHub Releases](https://github.com/przxmus/nick-hider/releases)
+
+> Maintainer note: replace the Modrinth and CurseForge placeholder slugs after public project pages are finalized.
+
+## What This Mod Does
+
+Nick Hider masks player identity details in common vanilla client rendering and text paths.
+
+- Local player: replace your shown name, skin, and cape.
+- Other players: replace names with a template and swap skins/capes from configured source accounts.
+- Global switch: instantly enable or disable all masking behavior.
+
+## Quick Start Tutorial
+
+1. Download the jar for your exact Minecraft + loader combination from [Releases](https://github.com/przxmus/nick-hider/releases).
+2. Put the jar in your Minecraft `mods` folder.
+3. Launch the game and open settings from Mod Menu (Fabric + Mod Menu), Mod List (Forge/NeoForge), or the keybind `Open Nick Hider Settings` (default unbound).
+4. First-time setup suggestion: enable `Hide Local Name`, `Hide Local Skin`, and `Hide Local Cape`, then set `Local Replacement Name` to a neutral alias.
+5. Join a world/server and verify your own name and skin/cape are masked; enable `Hide Other Names/Skins/Capes` if you also want to mask other players.
+
+## Features At A Glance
+
+| Area | Behavior |
+|---|---|
+| Local name | Replaces your local displayed name |
+| Local skin | Replaces your local rendered skin |
+| Local cape | Replaces your local cape and cape-based elytra texture |
+| Other names | Template-based replacement with `[ID]` token support |
+| Other skins/capes | Shared configured source usernames |
+| Runtime toggle | Global `Enable Nick Hider` on/off switch |
+
+## Compatibility
+
+- Mod version: `0.1.0`
 - Minecraft range: `1.20` to `1.21.11` (inclusive)
-- Loader strategy:
-  - Fabric: all supported Minecraft versions
-  - Forge: all supported versions where Forge exists
-  - NeoForge: only versions with stable NeoForge support
-- Mod version: `0.0.1`
+- Loader support policy: Fabric for all supported versions, Forge where Forge exists, and NeoForge where stable NeoForge support exists.
 
-### Version Matrix
+Short matrix:
 
-- `1.20`: Fabric, Forge
-- `1.20.1`: Fabric, Forge
-- `1.20.2`: Fabric, Forge, NeoForge
-- `1.20.3`: Fabric
-- `1.20.4`: Fabric, Forge, NeoForge
-- `1.20.5`: Fabric
-- `1.20.6`: Fabric, Forge, NeoForge
-- `1.21`: Fabric, NeoForge
-- `1.21.1`: Fabric, NeoForge
-- `1.21.2`: Fabric
-- `1.21.3`: Fabric, NeoForge
-- `1.21.4`: Fabric, NeoForge
-- `1.21.5`: Fabric, NeoForge
-- `1.21.6`: Fabric
-- `1.21.7`: Fabric
-- `1.21.8`: Fabric, NeoForge
-- `1.21.9`: Fabric
-- `1.21.10`: Fabric, NeoForge
-- `1.21.11`: Fabric
+- `1.20.x`: Fabric, Forge, selective NeoForge
+- `1.21.x`: Fabric, selective NeoForge
 
-## What It Does
+For exact jar availability per release, use [GitHub Releases](https://github.com/przxmus/nick-hider/releases).
 
-- Hides/replaces local player name.
-- Hides/replaces local player skin.
-- Hides/replaces local player cape (and cape-based elytra texture where applicable).
-- Hides/replaces other players' names (template with `[ID]` token).
-- Hides/replaces other players' skins (shared configured source).
-- Hides/replaces other players' capes (and cape-based elytra texture where applicable).
-- Global enable/disable switch for all masking behavior.
+## Configuration
 
-Settings are available in-game:
+### Toggle Controls
 
-- Fabric Mod Menu config button (when Mod Menu is installed)
-- Forge/NeoForge Mod List config screen
-- Keybind entry (`Open Nick Hider Settings`, default unbound)
+- Hide local: name, skin, cape
+- Hide others: names, skins, capes
+- Global master toggle: `Enable Nick Hider`
 
-## Settings
+### Replacement Inputs
 
-The config exposes only these fields:
+- Local replacement name
+- Local skin source username
+- Local cape source username
+- Other players name template
+- Other players skin source username
+- Other players cape source username
 
-- `Hide Local Name`
-- `Hide Local Skin`
-- `Hide Local Cape`
-- `Hide Other Names`
-- `Hide Other Skins`
-- `Hide Other Capes`
-- `Local Replacement Name`
-- `Local Skin Source Username`
-- `Local Cape Source Username`
-- `Other Players Name Template`
-- `Other Players Skin Source Username`
-- `Other Players Cape Source Username`
-- `Enable Nick Hider`
+### Validation and Fallbacks
 
-Cape fallback behavior:
+- Replacement usernames must be empty or match `[A-Za-z0-9_]{3,16}`.
+- Local replacement name must match `[A-Za-z0-9_]{3,16}`.
+- If cape masking is enabled but no valid cape source resolves, cape rendering is hidden instead of showing the original cape.
 
-- If cape masking is enabled but no valid cape source can be resolved, cape rendering is hidden instead of falling back to the original cape.
+## Known Limits
 
-## Installation
+Nick Hider is aggressive on vanilla client paths, but masking is still best-effort. Third-party mods or custom render/UI pipelines can display unmasked data outside covered paths.
 
-1. Open the repository Releases page.
-2. Download the jar asset for the target release (direct `.jar` file, not a zip bundle).
-3. Put the jar into your Minecraft `mods` directory for the matching loader + Minecraft version.
-4. Start the game and open Nick Hider settings via keybind (or Mod List screen on Forge/NeoForge).
-
-## Privacy Scope
-
-Nick Hider applies aggressive client-side masking on vanilla rendering/text paths.  
-This is best-effort behavior, not a mathematical guarantee across every third-party mod renderer/UI pipeline.
-
-## Icon Compatibility
-
-The mod icon is wired through loader metadata using `assets/nickhider/icon.png`:
-
-- Forge `mods.toml` (`logoFile`)
-- NeoForge `neoforge.mods.toml` (`logoFile`)
-- Fabric `fabric.mod.json` (`icon`)
-
-Launchers and tooling (for example Prism Launcher) may render mod icons differently depending on their metadata support. This project configures standard metadata paths for best-effort compatibility.
-
-## Building From Source
+## For Developers
 
 Requirements:
 
-- Java 21 for Gradle/Stonecraft runtime
+- Java 21
 - Git
 
 Build:
@@ -108,59 +101,25 @@ Build:
 ./gradlew clean build
 ```
 
-Notes:
-
-- The build runtime uses Java 21 because Stonecraft requires it.
-- Produced mod classes are compiled with version-aware bytecode targets:
-  - Java 17 for pre-`1.20.5` targets
-  - Java 21 for `1.20.5+` targets
-
-## Semi-automated runClient checks
-
-Use:
+Run tests:
 
 ```bash
-bash scripts/runclient-notes.sh
+./gradlew test
 ```
 
-Optional filters:
+Project references:
 
-```bash
-bash scripts/runclient-notes.sh --only '1.21.*-neoforge'
-bash scripts/runclient-notes.sh --from 1.20.6-fabric --to 1.21.1-neoforge
-```
-
-Behavior:
-
-- Detects all `1.*` Gradle subprojects dynamically (`./gradlew projects -q`).
-- Runs `runClient` one project at a time.
-- Stores full logs per project.
-- Extracts `<developer>` chat messages into a single Markdown notes file.
-- Deduplicates only same-event server/render duplicates (same timestamp + same message).
-- While a project is running, type `/next` + Enter to force moving to the next project.
-- After each game closes, prompts for manual multiline notes; finish with `/done`.
-
-Output:
-
-- `runchecks/<run-id>/notes.md`
-- `runchecks/<run-id>/logs/<project>.log`
-- `runchecks/<run-id>/summary.tsv`
-- `runchecks/latest.txt` (last run id)
-
-## Releases
-
-- CI build workflow runs in loader shards (`fabric`, `forge`, `neoforge`) and uploads jar artifacts per shard.
-- Manual release workflow reuses those CI artifacts for the tagged release commit instead of rebuilding jars.
-- Manual Modrinth publish workflow (`Manual Modrinth Publish`) publishes each release jar as a separate Modrinth version.
-- Manual CurseForge publish workflow (`Manual Curseforge Publish`) publishes each release jar as a separate CurseForge file.
-- Manual aggregate workflow (`Manual Publish`) runs Modrinth and CurseForge publish workflows in parallel.
-- Required repository secrets for publish workflows:
-  - `MODRINTH_TOKEN`
-  - `MODRINTH_PROJECT_ID` (project ID or slug; project URL is also accepted)
-  - `CURSEFORGE_TOKEN`
-  - `CURSEFORGE_PROJECT_ID` (numeric project ID)
+- Leak audit checklist: `docs/leak-audit-checklist.md`
+- Helper scripts: `scripts/`
+- CI and publish workflows: `.github/workflows/`
 
 ## License
 
 Licensed under the GNU Affero General Public License v3.0 (AGPLv3).  
-See `/LICENSE` for full text.
+See [LICENSE](LICENSE).
+
+## Maintainer and Links
+
+- Author: `przxmus`
+- Source: [GitHub Repository](https://github.com/przxmus/nick-hider)
+- Issues: [GitHub Issues](https://github.com/przxmus/nick-hider/issues)
