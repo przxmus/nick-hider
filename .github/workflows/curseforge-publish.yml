@@ -1,0 +1,270 @@
+name: Manual Curseforge Publish
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      CURSEFORGE_TOKEN:
+        required: true
+      CURSEFORGE_PROJECT_ID:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      selected_tag: ${{ steps.prepare.outputs.selected_tag }}
+      selected_is_prerelease: ${{ steps.prepare.outputs.selected_is_prerelease }}
+      release_type: ${{ steps.prepare.outputs.release_type }}
+      release_body: ${{ steps.prepare.outputs.release_body }}
+      publish_matrix: ${{ steps.prepare.outputs.publish_matrix }}
+      has_work: ${{ steps.prepare.outputs.has_work }}
+      to_publish_count: ${{ steps.prepare.outputs.to_publish_count }}
+      total_jar_count: ${{ steps.prepare.outputs.total_jar_count }}
+    steps:
+      - name: Validate required secrets
+        env:
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          CURSEFORGE_PROJECT_ID: ${{ secrets.CURSEFORGE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CURSEFORGE_TOKEN:-}" ]; then
+            echo "Missing required secret: CURSEFORGE_TOKEN"
+            exit 1
+          fi
+          if [ -z "${CURSEFORGE_PROJECT_ID:-}" ]; then
+            echo "Missing required secret: CURSEFORGE_PROJECT_ID"
+            exit 1
+          fi
+          if ! [[ "${CURSEFORGE_PROJECT_ID}" =~ ^[0-9]+$ ]]; then
+            echo "CURSEFORGE_PROJECT_ID must be an integer."
+            exit 1
+          fi
+
+      - name: Select release and prepare CurseForge publish matrix
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p curseforge-assets
+
+          releases_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
+          selected_release="$(
+            printf '%s' "${releases_json}" \
+            | jq -c '[.[] | select(.draft == false and .published_at != null)] | if length == 0 then empty else max_by(.published_at) end'
+          )"
+
+          if [ -z "${selected_release}" ]; then
+            echo "No published non-draft GitHub release found."
+            exit 1
+          fi
+
+          selected_tag="$(printf '%s' "${selected_release}" | jq -r '.tag_name')"
+          selected_is_prerelease="$(printf '%s' "${selected_release}" | jq -r '.prerelease')"
+          release_body="$(printf '%s' "${selected_release}" | jq -r '.body // ""')"
+
+          release_type="release"
+          if [ "${selected_is_prerelease}" = "true" ]; then
+            release_type="beta"
+          fi
+
+          mapfile -t jar_asset_rows < <(
+            printf '%s' "${selected_release}" \
+            | jq -r '.assets[] | select(.name | endswith(".jar")) | [.name, .url] | @tsv'
+          )
+
+          if [ "${#jar_asset_rows[@]}" -eq 0 ]; then
+            echo "No .jar assets found in selected release ${selected_tag}."
+            exit 1
+          fi
+
+          for row in "${jar_asset_rows[@]}"; do
+            IFS=$'\t' read -r asset_name asset_api_url <<< "${row}"
+            gh api \
+              -H "Accept: application/octet-stream" \
+              "${asset_api_url}" > "curseforge-assets/${asset_name}"
+          done
+
+          shopt -s nullglob
+          jar_paths=(curseforge-assets/*.jar)
+          if [ "${#jar_paths[@]}" -eq 0 ]; then
+            echo "No downloaded jar files found."
+            exit 1
+          fi
+
+          invalid_names=()
+          duplicate_keys=()
+          declare -A seen_keys=()
+
+          > all_items.jsonl
+
+          for jar_path in "${jar_paths[@]}"; do
+            file_name="$(basename "${jar_path}")"
+
+            if [[ "${file_name}" =~ ^nickhider-(fabric|forge|neoforge)-([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)\+mc([0-9]+([.][0-9]+){1,2})\.jar$ ]]; then
+              loader="${BASH_REMATCH[1]}"
+              mod_version="${BASH_REMATCH[2]}"
+              mc_version="${BASH_REMATCH[4]}"
+              key="${mc_version}|${mod_version}|${loader}"
+
+              if [ -n "${seen_keys[${key}]:-}" ]; then
+                duplicate_keys+=("${key}")
+                continue
+              fi
+              seen_keys["${key}"]=1
+
+              loader_display="Fabric"
+              if [ "${loader}" = "forge" ]; then
+                loader_display="Forge"
+              elif [ "${loader}" = "neoforge" ]; then
+                loader_display="NeoForge"
+              fi
+
+              display_name="Nick Hider ${mod_version} for ${loader_display} ${mc_version}"
+              game_versions="Minecraft ${mc_version}:${mc_version},${loader_display}"
+
+              jq -nc \
+                --arg loader "${loader}" \
+                --arg mod_version "${mod_version}" \
+                --arg mc_version "${mc_version}" \
+                --arg display_name "${display_name}" \
+                --arg game_versions "${game_versions}" \
+                --arg file_path "${jar_path}" \
+                --arg file_name "${file_name}" \
+                '{
+                  loader: $loader,
+                  mod_version: $mod_version,
+                  mc_version: $mc_version,
+                  display_name: $display_name,
+                  game_versions: $game_versions,
+                  file_path: $file_path,
+                  file_name: $file_name
+                }' >> all_items.jsonl
+            else
+              invalid_names+=("${file_name}")
+            fi
+          done
+
+          if [ "${#invalid_names[@]}" -gt 0 ]; then
+            echo "Found jar files with invalid names:"
+            printf ' - %s\n' "${invalid_names[@]}"
+            exit 1
+          fi
+
+          if [ "${#duplicate_keys[@]}" -gt 0 ]; then
+            echo "Duplicate (mc_version, mod_version, loader) tuples found:"
+            printf ' - %s\n' "${duplicate_keys[@]}"
+            exit 1
+          fi
+
+          publish_matrix="$(jq -cs '.' all_items.jsonl)"
+          to_publish_count="$(jq -s 'length' all_items.jsonl)"
+          has_work="false"
+          if [ "${to_publish_count}" -gt 0 ]; then
+            has_work="true"
+          fi
+
+          {
+            echo "selected_tag=${selected_tag}"
+            echo "selected_is_prerelease=${selected_is_prerelease}"
+            echo "release_type=${release_type}"
+            echo "publish_matrix=${publish_matrix}"
+            echo "has_work=${has_work}"
+            echo "to_publish_count=${to_publish_count}"
+            echo "total_jar_count=${#jar_paths[@]}"
+            echo "release_body<<EOF"
+            printf '%s\n' "${release_body}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload selected release jars for publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: curseforge-source-jars
+          if-no-files-found: error
+          path: curseforge-assets
+
+  publish:
+    needs: prepare
+    if: needs.prepare.outputs.has_work == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        item: ${{ fromJson(needs.prepare.outputs.publish_matrix) }}
+    steps:
+      - name: Download selected release jars
+        uses: actions/download-artifact@v4
+        with:
+          name: curseforge-source-jars
+          path: .
+
+      - name: Normalize downloaded jar paths
+        run: |
+          set -euo pipefail
+          mkdir -p curseforge-assets
+
+          mapfile -t downloaded_jars < <(find . -type f -name "nickhider-*.jar" | sort -u)
+          if [ "${#downloaded_jars[@]}" -eq 0 ]; then
+            echo "No jars were downloaded from artifact curseforge-source-jars."
+            exit 1
+          fi
+
+          for jar in "${downloaded_jars[@]}"; do
+            target="curseforge-assets/$(basename "${jar}")"
+            if [ "${jar}" != "${target}" ]; then
+              cp "${jar}" "${target}"
+            fi
+          done
+
+      - name: Publish version to CurseForge
+        uses: itsmeow/curseforge-upload@v3
+        with:
+          token: ${{ secrets.CURSEFORGE_TOKEN }}
+          project_id: ${{ secrets.CURSEFORGE_PROJECT_ID }}
+          game_endpoint: minecraft
+          file_path: ${{ matrix.item.file_path }}
+          display_name: ${{ matrix.item.display_name }}
+          changelog: ${{ needs.prepare.outputs.release_body }}
+          changelog_type: markdown
+          release_type: ${{ needs.prepare.outputs.release_type }}
+          game_versions: ${{ matrix.item.game_versions }}
+
+  summary:
+    needs: [prepare, publish]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print publish summary
+        run: |
+          published_count="0"
+          if [ "${{ needs.publish.result }}" = "success" ]; then
+            published_count="${{ needs.prepare.outputs.to_publish_count }}"
+          elif [ "${{ needs.prepare.outputs.has_work }}" = "true" ]; then
+            published_count="unknown (publish job failed)"
+          fi
+
+          echo "Selected GitHub release tag: ${{ needs.prepare.outputs.selected_tag }}"
+          echo "Selected release is prerelease: ${{ needs.prepare.outputs.selected_is_prerelease }}"
+          echo "CurseForge release type: ${{ needs.prepare.outputs.release_type }}"
+          echo "Total jars discovered: ${{ needs.prepare.outputs.total_jar_count }}"
+          echo "Versions published: ${published_count}"
+          echo "Versions planned to publish: ${{ needs.prepare.outputs.to_publish_count }}"
+          echo "Publish job result: ${{ needs.publish.result }}"
+
+          {
+            echo "## Manual Curseforge Publish Summary"
+            echo
+            echo "- Selected GitHub release tag: \`${{ needs.prepare.outputs.selected_tag }}\`"
+            echo "- Selected release is prerelease: \`${{ needs.prepare.outputs.selected_is_prerelease }}\`"
+            echo "- CurseForge release type: \`${{ needs.prepare.outputs.release_type }}\`"
+            echo "- Total jars discovered: \`${{ needs.prepare.outputs.total_jar_count }}\`"
+            echo "- Versions published: \`${published_count}\`"
+            echo "- Versions planned to publish: \`${{ needs.prepare.outputs.to_publish_count }}\`"
+            echo "- Publish job result: \`${{ needs.publish.result }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

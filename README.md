@@ -151,9 +151,13 @@ Output:
 - CI build workflow runs in loader shards (`fabric`, `forge`, `neoforge`) and uploads jar artifacts per shard.
 - Manual release workflow reuses those CI artifacts for the tagged release commit instead of rebuilding jars.
 - Manual Modrinth publish workflow (`Manual Modrinth Publish`) publishes each release jar as a separate Modrinth version.
-- Required repository secrets for Modrinth publish:
+- Manual CurseForge publish workflow (`Manual Curseforge Publish`) publishes each release jar as a separate CurseForge file.
+- Manual aggregate workflow (`Manual Publish`) runs Modrinth and CurseForge publish workflows in parallel.
+- Required repository secrets for publish workflows:
   - `MODRINTH_TOKEN`
   - `MODRINTH_PROJECT_ID` (project ID or slug; project URL is also accepted)
+  - `CURSEFORGE_TOKEN`
+  - `CURSEFORGE_PROJECT_ID` (numeric project ID)
 
 ## License
 

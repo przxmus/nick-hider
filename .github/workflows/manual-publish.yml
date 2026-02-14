@@ -1,0 +1,36 @@
+name: Manual Publish
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  modrinth:
+    name: Publish to Modrinth
+    uses: ./.github/workflows/modrinth-publish.yml
+    secrets: inherit
+
+  curseforge:
+    name: Publish to CurseForge
+    uses: ./.github/workflows/curseforge-publish.yml
+    secrets: inherit
+
+  summary:
+    name: Publish Summary
+    needs: [modrinth, curseforge]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print orchestration summary
+        run: |
+          echo "Modrinth workflow result: ${{ needs.modrinth.result }}"
+          echo "CurseForge workflow result: ${{ needs.curseforge.result }}"
+
+          {
+            echo "## Manual Publish Summary"
+            echo
+            echo "- Modrinth workflow result: \`${{ needs.modrinth.result }}\`"
+            echo "- CurseForge workflow result: \`${{ needs.curseforge.result }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

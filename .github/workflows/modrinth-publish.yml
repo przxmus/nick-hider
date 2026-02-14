@@ -2,6 +2,12 @@ name: Manual Modrinth Publish
 
 on:
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      MODRINTH_TOKEN:
+        required: true
+      MODRINTH_PROJECT_ID:
+        required: true
 
 permissions:
   contents: read
