@@ -3,17 +3,25 @@ package dev.przxmus.nickhider.core;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.User;
 import net.minecraft.util.StringUtil;
+import dev.przxmus.nickhider.NickHider;
 import dev.przxmus.nickhider.config.ConfigRepository;
 import dev.przxmus.nickhider.config.PrivacyConfig;
 
 public final class PrivacyRuntimeState {
+    private static final int SKIN_HOOK_FAILURE_THRESHOLD = 5;
+    private static final long SKIN_HOOK_CIRCUIT_BREAKER_MS = 60_000L;
+
     private final ConfigRepository configRepository;
     private final PlayerAliasService aliasService;
     private final SkinResolutionService skinResolutionService;
     private final TextSanitizer textSanitizer;
+
+    private final AtomicInteger skinHookFailures = new AtomicInteger(0);
+    private volatile long skinHookDisabledUntilMs;
 
     public PrivacyRuntimeState(
             ConfigRepository configRepository,
@@ -41,6 +49,34 @@ public final class PrivacyRuntimeState {
         skinResolutionService.clearRuntimeCache();
     }
 
+    public void refreshSkinCapeNow() {
+        skinResolutionService.forceRefreshSources(configRepository.get());
+    }
+
+    public String skinCapeStatusSummary() {
+        if (isSkinCapeCircuitOpen()) {
+            long seconds = Math.max(1L, (skinHookDisabledUntilMs - System.currentTimeMillis()) / 1000L);
+            return "Temporarily disabled (" + seconds + "s)";
+        }
+        return skinResolutionService.statusSummary();
+    }
+
+    public void reportSkinCapeHookFailure(String hook, Throwable throwable) {
+        int failures = skinHookFailures.incrementAndGet();
+        if (failures < SKIN_HOOK_FAILURE_THRESHOLD) {
+            return;
+        }
+
+        skinHookFailures.set(0);
+        skinHookDisabledUntilMs = System.currentTimeMillis() + SKIN_HOOK_CIRCUIT_BREAKER_MS;
+        NickHider.LOGGER.warn(
+                "Nick Hider disabled skin/cape overrides for {}ms after repeated hook failures (last hook: {})",
+                SKIN_HOOK_CIRCUIT_BREAKER_MS,
+                hook,
+                throwable
+        );
+    }
+
     public String sanitizeText(String text) {
         PrivacyConfig config = configRepository.get();
         if (!config.enabled) {
@@ -56,7 +92,7 @@ public final class PrivacyRuntimeState {
     public Optional<ResolvedSkin> replacementSkin(UUID targetUuid, String targetName) {
         PrivacyConfig config = configRepository.get();
         Minecraft minecraft = Minecraft.getInstance();
-        if (!config.enabled || minecraft.player == null || targetUuid == null) {
+        if (!config.enabled || minecraft.player == null || targetUuid == null || isSkinCapeCircuitOpen()) {
             return Optional.empty();
         }
 
@@ -79,7 +115,7 @@ public final class PrivacyRuntimeState {
     public boolean shouldOverrideCape(UUID targetUuid, String targetName) {
         PrivacyConfig config = configRepository.get();
         Minecraft minecraft = Minecraft.getInstance();
-        if (!config.enabled || minecraft.player == null || targetUuid == null) {
+        if (!config.enabled || minecraft.player == null || targetUuid == null || isSkinCapeCircuitOpen()) {
             return false;
         }
 
@@ -161,5 +197,11 @@ public final class PrivacyRuntimeState {
 
     public void onWorldChange() {
         skinResolutionService.clearRuntimeCache();
+        skinHookFailures.set(0);
+        skinHookDisabledUntilMs = 0L;
+    }
+
+    private boolean isSkinCapeCircuitOpen() {
+        return System.currentTimeMillis() < skinHookDisabledUntilMs;
     }
 }

@@ -6,7 +6,8 @@
   "refmap": "nickhider.refmap.json",
   "client": [
     "EntityRendererNameTagMixin",
-    "PlayerInfoMixin",
+    "PlayerInfoLegacyMixin",
+    "PlayerInfoSkinRecordMixin",
     "PlayerTabOverlayMixin",
     "StringDecomposerMixin"
   ],

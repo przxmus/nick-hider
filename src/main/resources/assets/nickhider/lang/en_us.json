@@ -15,6 +15,8 @@
   "nickhider.config.others_name_template": "Other Players Name Template",
   "nickhider.config.others_skin_user": "Other Players Skin Source Username",
   "nickhider.config.others_cape_user": "Other Players Cape Source Username",
+  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s",
   "nickhider.config.save": "Save",
   "nickhider.config.error.local_name_invalid": "Local replacement name must match [A-Za-z0-9_]{3,16}.",
   "nickhider.config.error.local_skin_user_invalid": "Local skin source must be empty or match [A-Za-z0-9_]{3,16}.",

@@ -1,59 +1,117 @@
 package dev.przxmus.nickhider.core;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.minecraft.MinecraftProfileTexture;
+import com.mojang.authlib.minecraft.MinecraftSessionService;
+import dev.przxmus.nickhider.NickHider;
+import dev.przxmus.nickhider.config.PrivacyConfig;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.Reader;
-import java.io.Writer;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Base64;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Supplier;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.resources.DefaultPlayerSkin;
+import net.minecraft.client.resources.SkinManager;
 import net.minecraft.util.StringUtil;
-import com.mojang.blaze3d.platform.NativeImage;
-import dev.przxmus.nickhider.NickHider;
+
+/*? if >=1.21.1 {*/
+/*import net.minecraft.client.resources.PlayerSkin;
+*/
+/*?}*/
 
 public final class SkinResolutionService {
-    private static final Gson GSON = new Gson();
+    private static final String LOOKUP_PRIMARY_BASE = "https://api.minecraftservices.com/minecraft/profile/lookup/name/";
+    private static final String LOOKUP_LEGACY_BASE = "https://api.mojang.com/users/profiles/minecraft/";
+
+    private static final long SWR_TTL_MS = Duration.ofMinutes(10).toMillis();
+    private static final long LOOKUP_CACHE_TTL_MS = Duration.ofMinutes(10).toMillis();
+
+    private static final long MIN_COOLDOWN_MS = Duration.ofSeconds(30).toMillis();
+    private static final long MAX_COOLDOWN_MS = Duration.ofMinutes(10).toMillis();
+
+    private static final long RETRY_BACKOFF_BASE_MS = 600L;
+    private static final long RETRY_BACKOFF_MAX_MS = 5_000L;
+
+    private static final int MAX_ATTEMPTS = 3;
+
+    private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(8);
+    private static final Duration LOOKUP_CONNECT_TIMEOUT = Duration.ofSeconds(8);
+    private static final Duration SKIN_LOAD_TIMEOUT = Duration.ofSeconds(12);
+
+    private static final UUID NIL_UUID = new UUID(0L, 0L);
     private static final AtomicBoolean DEFAULT_SKIN_FALLBACK_WARNED = new AtomicBoolean(false);
 
     private final Path cacheDirectory;
-    private final HttpClient httpClient;
-    private final ExecutorService executor;
-    private final Map<String, ResolvedSkin> memoryCache = new ConcurrentHashMap<>();
-    private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
+    private final Executor executor;
+    private final Clock clock;
+    private final Sleeper sleeper;
+    private final Jitter jitter;
+    private final UsernameLookup usernameLookup;
+    private final SkinLoader skinLoader;
+    private final DefaultSkinProvider defaultSkinProvider;
+
+    private final Map<String, SourceState> sourceStates = new ConcurrentHashMap<>();
+    private final Map<String, LookupCacheEntry> lookupCache = new ConcurrentHashMap<>();
 
     public SkinResolutionService(Path cacheDirectory) {
+        this(
+                cacheDirectory,
+                createDefaultExecutor(),
+                System::currentTimeMillis,
+                millis -> Thread.sleep(millis),
+                boundExclusive -> boundExclusive <= 0 ? 0L : ThreadLocalRandom.current().nextLong(boundExclusive),
+                null,
+                null,
+                null
+        );
+        clearLegacyDiskCacheFiles();
+    }
+
+    SkinResolutionService(
+            Path cacheDirectory,
+            Executor executor,
+            Clock clock,
+            Sleeper sleeper,
+            Jitter jitter,
+            UsernameLookup usernameLookup,
+            SkinLoader skinLoader,
+            DefaultSkinProvider defaultSkinProvider
+    ) {
         this.cacheDirectory = cacheDirectory;
-        this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
-        this.executor = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "nickhider-skin-fetcher");
-            thread.setDaemon(true);
-            return thread;
-        });
+        this.executor = executor;
+        this.clock = clock;
+        this.sleeper = sleeper;
+        this.jitter = jitter;
+        this.usernameLookup = usernameLookup != null ? usernameLookup : createHttpUsernameLookup();
+        this.skinLoader = skinLoader != null ? skinLoader : this::loadSkinViaMinecraft;
+        this.defaultSkinProvider = defaultSkinProvider != null ? defaultSkinProvider : this::defaultSkinInternal;
     }
 
     public ResolvedSkin resolveOrFallback(String username, UUID fallbackUuid) {
@@ -61,440 +119,576 @@ public final class SkinResolutionService {
             return defaultSkin(fallbackUuid);
         }
 
-        String normalized = username.toLowerCase(Locale.ROOT);
-        ResolvedSkin cached = memoryCache.get(normalized);
-        if (cached != null) {
-            return cached;
+        String normalizedUsername = normalize(username);
+        SourceState state = sourceStates.computeIfAbsent(normalizedUsername, key -> new SourceState());
+
+        long now = clock.nowMs();
+        ResolvedSkin lastGood;
+        boolean shouldFetch;
+
+        synchronized (state) {
+            lastGood = state.lastGood;
+            boolean stale = lastGood != null && (now - state.lastSuccessAtMs) >= SWR_TTL_MS;
+            boolean canAttempt = now >= state.nextRetryAtMs;
+            shouldFetch = canAttempt && !state.inFlight.get() && (lastGood == null || stale);
         }
 
-        ResolvedSkin diskCached = loadFromDisk(normalized);
-        if (diskCached != null) {
-            memoryCache.put(normalized, diskCached);
-            return diskCached;
+        if (shouldFetch) {
+            enqueueFetch(normalizedUsername, fallbackUuid, state);
         }
 
-        enqueueFetch(normalized);
-        return defaultSkin(fallbackUuid);
+        return lastGood != null ? lastGood : defaultSkin(fallbackUuid);
     }
 
     public void clearRuntimeCache() {
-        memoryCache.clear();
+        sourceStates.clear();
+        lookupCache.clear();
     }
 
-    private void enqueueFetch(String normalizedUsername) {
-        if (!inFlight.add(normalizedUsername)) {
+    public void forceRefreshSources(PrivacyConfig config) {
+        if (config == null) {
             return;
         }
 
-        CompletableFuture.runAsync(() -> fetchAndStore(normalizedUsername), executor)
+        Set<String> sources = new LinkedHashSet<>();
+        addSourceUsername(sources, config.localSkinUser);
+        addSourceUsername(sources, config.othersSkinUser);
+        addSourceUsername(sources, preferredCapeSource(config.localCapeUser, config.localSkinUser));
+        addSourceUsername(sources, preferredCapeSource(config.othersCapeUser, config.othersSkinUser));
+
+        for (String normalizedUsername : sources) {
+            SourceState state = sourceStates.computeIfAbsent(normalizedUsername, key -> new SourceState());
+            synchronized (state) {
+                state.nextRetryAtMs = 0L;
+            }
+            enqueueFetch(normalizedUsername, sourceFallbackUuid(normalizedUsername), state);
+        }
+    }
+
+    public String statusSummary() {
+        long now = clock.nowMs();
+
+        boolean anyFetching = false;
+        boolean anyLastGoodWithFailure = false;
+        long shortestRateLimit = Long.MAX_VALUE;
+
+        for (SourceState state : sourceStates.values()) {
+            if (state.inFlight.get()) {
+                anyFetching = true;
+            }
+
+            synchronized (state) {
+                if (state.lastGood != null && state.lastErrorCode != ErrorCode.NONE) {
+                    anyLastGoodWithFailure = true;
+                }
+
+                if (state.lastErrorCode == ErrorCode.RATE_LIMIT && state.nextRetryAtMs > now) {
+                    shortestRateLimit = Math.min(shortestRateLimit, state.nextRetryAtMs - now);
+                }
+            }
+        }
+
+        if (anyFetching) {
+            return "Fetching";
+        }
+
+        if (shortestRateLimit != Long.MAX_VALUE) {
+            long retrySeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(shortestRateLimit));
+            return "Rate limited (retry in " + retrySeconds + "s)";
+        }
+
+        if (anyLastGoodWithFailure) {
+            return "Using last good";
+        }
+
+        return "Idle";
+    }
+
+    private void enqueueFetch(String normalizedUsername, UUID fallbackUuid, SourceState state) {
+        if (!state.inFlight.compareAndSet(false, true)) {
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> fetchAndStore(normalizedUsername, fallbackUuid, state), executor)
                 .whenComplete((unused, throwable) -> {
-                    inFlight.remove(normalizedUsername);
+                    state.inFlight.set(false);
                     if (throwable != null) {
-                        NickHider.LOGGER.warn("Skin fetch failed for {}", normalizedUsername, throwable);
+                        FetchFailure failure = FetchFailure.internal("NH-SKIN-INTERNAL", throwable.getMessage(), 0L, false);
+                        applyFailure(normalizedUsername, state, failure);
                     }
                 });
     }
 
-    private void fetchAndStore(String normalizedUsername) {
+    private void fetchAndStore(String normalizedUsername, UUID fallbackUuid, SourceState state) {
+        FetchFailure finalFailure = null;
+
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                ProfileIdentity identity = usernameLookup.lookup(normalizedUsername);
+                ResolvedSkin resolved = skinLoader.load(identity, fallbackUuid);
+                if (resolved == null) {
+                    throw FetchException.internal("NH-SKIN-EMPTY", "Resolved skin is null", false);
+                }
+
+                applySuccess(state, resolved);
+                return;
+            } catch (FetchException ex) {
+                finalFailure = ex.toFailure();
+                if (ex.retryable() && attempt < MAX_ATTEMPTS) {
+                    sleepBackoff(attempt);
+                    continue;
+                }
+                break;
+            } catch (RuntimeException ex) {
+                finalFailure = classifyThrowable("NH-SKIN-INTERNAL", ex).toFailure();
+                if (finalFailure.retryable() && attempt < MAX_ATTEMPTS) {
+                    sleepBackoff(attempt);
+                    continue;
+                }
+                break;
+            }
+        }
+
+        if (finalFailure == null) {
+            finalFailure = FetchFailure.internal("NH-SKIN-INTERNAL", "Unknown fetch failure", 0L, false);
+        }
+        applyFailure(normalizedUsername, state, finalFailure);
+    }
+
+    private void applySuccess(SourceState state, ResolvedSkin resolved) {
+        synchronized (state) {
+            state.lastGood = resolved;
+            state.lastSuccessAtMs = clock.nowMs();
+            state.nextRetryAtMs = 0L;
+            state.lastErrorCode = ErrorCode.NONE;
+            state.consecutiveFailures = 0;
+        }
+    }
+
+    private void applyFailure(String normalizedUsername, SourceState state, FetchFailure failure) {
+        long now = clock.nowMs();
+        long cooldownMs;
+        boolean hasLastGood;
+
+        synchronized (state) {
+            int nextFailures = state.consecutiveFailures + 1;
+            state.consecutiveFailures = nextFailures;
+            cooldownMs = computeCooldownMs(failure.code(), nextFailures, failure.retryAfterMs());
+            state.nextRetryAtMs = now + cooldownMs;
+            state.lastErrorCode = failure.code();
+            hasLastGood = state.lastGood != null;
+        }
+
+        long retrySeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(cooldownMs));
+        String lastGoodState = hasLastGood ? "keeping last-known-good" : "no last-known-good";
+        String detail = failure.detail() == null || failure.detail().isBlank()
+                ? ""
+                : " detail=" + failure.detail();
+
+        NickHider.LOGGER.warn(
+                "[{}] Skin/cape fetch failed for {} (error={}, retry={}s, {}{})",
+                failure.diagnosticCode(),
+                normalizedUsername,
+                failure.code(),
+                retrySeconds,
+                lastGoodState,
+                detail
+        );
+    }
+
+    private void sleepBackoff(int attempt) {
+        long base = Math.min(RETRY_BACKOFF_MAX_MS, RETRY_BACKOFF_BASE_MS << Math.max(0, attempt - 1));
+        long total = base + jitter.nextJitterMs(Math.max(1L, base / 2L));
+
         try {
-            Files.createDirectories(cacheDirectory);
-
-            String uuidNoDashes = lookupUuid(normalizedUsername);
-            if (uuidNoDashes == null) {
-                return;
-            }
-
-            SkinLookupResult lookupResult = lookupSkin(uuidNoDashes);
-            if (lookupResult == null || lookupResult.skinUrl == null) {
-                return;
-            }
-
-            byte[] skinBytes = downloadTexture(lookupResult.skinUrl);
-            if (skinBytes == null) {
-                return;
-            }
-
-            Path skinPngPath = skinTexturePath(normalizedUsername);
-            Path metaPath = metaPath(normalizedUsername);
-            Path capePngPath = capeTexturePath(normalizedUsername);
-            Path elytraPngPath = elytraTexturePath(normalizedUsername);
-
-            if (!writeProcessedSkinTexture(skinPngPath, skinBytes, normalizedUsername)) {
-                return;
-            }
-            writeOptionalTexture(capePngPath, lookupResult.capeUrl);
-            writeOptionalTexture(elytraPngPath, lookupResult.elytraUrl);
-
-            JsonObject meta = new JsonObject();
-            meta.addProperty("model", lookupResult.modelName);
-            try (Writer writer = Files.newBufferedWriter(metaPath, StandardCharsets.UTF_8)) {
-                GSON.toJson(meta, writer);
-            }
-        } catch (Exception ex) {
-            NickHider.LOGGER.warn("Failed to fetch skin for {}", normalizedUsername, ex);
+            sleeper.sleep(total);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
         }
     }
 
-    private boolean writeProcessedSkinTexture(Path skinPath, byte[] skinBytes, String normalizedUsername) {
-        try {
-            NativeImage image = NativeImage.read(skinBytes);
-            NativeImage processed = processLegacySkin(image, normalizedUsername);
-            if (processed == null) {
-                return false;
-            }
-
-            try (processed) {
-                processed.writeToFile(skinPath);
-            }
-            return true;
-        } catch (IOException | RuntimeException ex) {
-            NickHider.LOGGER.warn("Failed to process downloaded skin for {}", normalizedUsername, ex);
-            return false;
+    private long computeCooldownMs(ErrorCode code, int consecutiveFailures, long retryAfterMs) {
+        if (code == ErrorCode.NOT_FOUND) {
+            return MAX_COOLDOWN_MS;
         }
+
+        long exponential = MIN_COOLDOWN_MS;
+        if (consecutiveFailures > 1) {
+            int shift = Math.min(consecutiveFailures - 1, 5);
+            exponential = Math.min(MAX_COOLDOWN_MS, MIN_COOLDOWN_MS << shift);
+        }
+
+        long cooldown = clamp(exponential, MIN_COOLDOWN_MS, MAX_COOLDOWN_MS);
+        if (code == ErrorCode.RATE_LIMIT && retryAfterMs > 0L) {
+            cooldown = Math.max(cooldown, clamp(retryAfterMs, MIN_COOLDOWN_MS, MAX_COOLDOWN_MS));
+        }
+
+        return cooldown;
     }
 
-    private byte[] downloadTexture(String textureUrl) throws IOException, InterruptedException {
-        HttpRequest imageRequest = HttpRequest.newBuilder(URI.create(textureUrl))
-                .GET()
-                .timeout(Duration.ofSeconds(10))
-                .build();
-        HttpResponse<byte[]> imageResponse = httpClient.send(imageRequest, HttpResponse.BodyHandlers.ofByteArray());
-        if (imageResponse.statusCode() != 200) {
-            return null;
-        }
-        return imageResponse.body();
-    }
-
-    private void writeOptionalTexture(Path texturePath, String textureUrl) throws IOException, InterruptedException {
-        if (textureUrl == null || textureUrl.isBlank()) {
-            Files.deleteIfExists(texturePath);
-            return;
-        }
-
-        byte[] bytes = downloadTexture(textureUrl);
-        if (bytes == null) {
-            Files.deleteIfExists(texturePath);
-            return;
-        }
-
-        Files.write(texturePath, bytes);
-    }
-
-    private String lookupUuid(String username) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.mojang.com/users/profiles/minecraft/" + username))
-                .GET()
-                .timeout(Duration.ofSeconds(8))
+    private UsernameLookup createHttpUsernameLookup() {
+        HttpClient primaryClient = HttpClient.newBuilder()
+                .connectTimeout(LOOKUP_CONNECT_TIMEOUT)
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (response.statusCode() != 200) {
-            return null;
-        }
-
-        JsonObject object = JsonParser.parseString(response.body()).getAsJsonObject();
-        return object.has("id") ? object.get("id").getAsString() : null;
-    }
-
-    private SkinLookupResult lookupSkin(String uuidNoDashes) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create("https://sessionserver.mojang.com/session/minecraft/profile/" + uuidNoDashes + "?unsigned=false"))
-                .GET()
-                .timeout(Duration.ofSeconds(8))
+        HttpClient legacyClient = HttpClient.newBuilder()
+                .connectTimeout(LOOKUP_CONNECT_TIMEOUT)
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (response.statusCode() != 200) {
-            return null;
-        }
-
-        JsonObject profile = JsonParser.parseString(response.body()).getAsJsonObject();
-        if (!profile.has("properties")) {
-            return null;
-        }
-
-        for (var element : profile.getAsJsonArray("properties")) {
-            JsonObject property = element.getAsJsonObject();
-            if (!"textures".equals(property.get("name").getAsString())) {
-                continue;
+        return normalizedUsername -> {
+            long now = clock.nowMs();
+            LookupCacheEntry cached = lookupCache.get(normalizedUsername);
+            if (cached != null && cached.expiresAtMs() > now) {
+                return cached.identity();
             }
 
-            String encoded = property.get("value").getAsString();
-            String decoded = new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8);
-            JsonObject texturesRoot = JsonParser.parseString(decoded).getAsJsonObject();
-            if (!texturesRoot.has("textures") || !texturesRoot.getAsJsonObject("textures").has("SKIN")) {
-                return null;
-            }
+            try {
+                ProfileIdentity identity = lookupEndpoint(primaryClient, LOOKUP_PRIMARY_BASE, normalizedUsername, true);
+                lookupCache.put(normalizedUsername, new LookupCacheEntry(identity, now + LOOKUP_CACHE_TTL_MS));
+                return identity;
+            } catch (FetchException primaryFailure) {
+                if (primaryFailure.code() == ErrorCode.NOT_FOUND) {
+                    throw primaryFailure;
+                }
 
-            JsonObject textures = texturesRoot.getAsJsonObject("textures");
-            JsonObject skin = textures.getAsJsonObject("SKIN");
-            String skinUrl = skin.get("url").getAsString();
-            String model = ResolvedSkin.MODEL_DEFAULT;
-            if (skin.has("metadata") && skin.getAsJsonObject("metadata").has("model")) {
-                model = skin.getAsJsonObject("metadata").get("model").getAsString();
-            }
-
-            String capeUrl = null;
-            if (textures.has("CAPE")) {
-                JsonObject cape = textures.getAsJsonObject("CAPE");
-                if (cape.has("url")) {
-                    capeUrl = cape.get("url").getAsString();
+                try {
+                    ProfileIdentity identity = lookupEndpoint(legacyClient, LOOKUP_LEGACY_BASE, normalizedUsername, false);
+                    lookupCache.put(normalizedUsername, new LookupCacheEntry(identity, now + LOOKUP_CACHE_TTL_MS));
+                    return identity;
+                } catch (FetchException legacyFailure) {
+                    throw preferFailure(primaryFailure, legacyFailure);
                 }
             }
-
-            String elytraUrl = null;
-            if (textures.has("ELYTRA")) {
-                JsonObject elytra = textures.getAsJsonObject("ELYTRA");
-                if (elytra.has("url")) {
-                    elytraUrl = elytra.get("url").getAsString();
-                }
-            }
-
-            return new SkinLookupResult(skinUrl, model, capeUrl, elytraUrl);
-        }
-
-        return null;
+        };
     }
 
-    private ResolvedSkin loadFromDisk(String normalizedUsername) {
-        Path pngPath = skinTexturePath(normalizedUsername);
-        Path metaPath = metaPath(normalizedUsername);
-        Path capePath = capeTexturePath(normalizedUsername);
-        Path elytraPath = elytraTexturePath(normalizedUsername);
+    private ProfileIdentity lookupEndpoint(HttpClient client, String base, String normalizedUsername, boolean primary) throws FetchException {
+        String encodedUsername = URLEncoder.encode(normalizedUsername, StandardCharsets.UTF_8);
+        URI uri = URI.create(base + encodedUsername);
 
-        if (!Files.exists(pngPath) || !Files.exists(metaPath)) {
-            return null;
-        }
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .GET()
+                .timeout(LOOKUP_TIMEOUT)
+                .build();
 
-        String modelName = ResolvedSkin.MODEL_DEFAULT;
-        try (Reader reader = Files.newBufferedReader(metaPath, StandardCharsets.UTF_8)) {
-            JsonObject meta = JsonParser.parseReader(reader).getAsJsonObject();
-            if (meta.has("model")) {
-                modelName = meta.get("model").getAsString();
-            }
-        } catch (Exception ex) {
-            NickHider.LOGGER.warn("Failed to read skin metadata {}", metaPath, ex);
-        }
-
-        try (InputStream input = Files.newInputStream(pngPath)) {
-            NativeImage image = NativeImage.read(input);
-            NativeImage processed = processLegacySkin(image, normalizedUsername);
-            if (processed == null) {
-                invalidateSkinCacheEntry(normalizedUsername);
-                return null;
-            }
-
-            Object location = createResourceLocation(NickHider.MOD_ID, "cached_skin/" + normalizedUsername);
-            Minecraft minecraft = Minecraft.getInstance();
-            TextureManager textureManager = minecraft.getTextureManager();
-            registerTexture(textureManager, location, createDynamicTexture(processed));
-
-            Object capeLocation = registerOptionalTexture(capePath, "cached_cape/" + normalizedUsername, textureManager);
-            Object elytraLocation = registerOptionalTexture(elytraPath, "cached_elytra/" + normalizedUsername, textureManager);
-            return new ResolvedSkin(location, modelName, capeLocation, elytraLocation);
-        } catch (IOException | RuntimeException ex) {
-            NickHider.LOGGER.warn("Failed to load cached skin {}", pngPath, ex);
-            invalidateSkinCacheEntry(normalizedUsername);
-            return null;
-        }
-    }
-
-    private Object registerOptionalTexture(Path path, String textureKey, TextureManager textureManager) {
-        if (!Files.exists(path)) {
-            return null;
-        }
-
-        try (InputStream input = Files.newInputStream(path)) {
-            NativeImage image = NativeImage.read(input);
-            Object location = createResourceLocation(NickHider.MOD_ID, textureKey);
-            registerTexture(textureManager, location, createDynamicTexture(image));
-            return location;
-        } catch (IOException | RuntimeException ex) {
-            NickHider.LOGGER.warn("Failed to load cached texture {}", path, ex);
-            invalidateTextureCacheEntry(path);
-            return null;
-        }
-    }
-
-    private void invalidateSkinCacheEntry(String normalizedUsername) {
+        HttpResponse<String> response;
         try {
-            Files.deleteIfExists(skinTexturePath(normalizedUsername));
-            Files.deleteIfExists(metaPath(normalizedUsername));
-            Files.deleteIfExists(capeTexturePath(normalizedUsername));
-            Files.deleteIfExists(elytraTexturePath(normalizedUsername));
+            response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw FetchException.network("NH-SKIN-INTERRUPTED", "Lookup interrupted", true);
         } catch (IOException ex) {
-            NickHider.LOGGER.debug("Failed to clear broken skin cache for {}", normalizedUsername, ex);
+            throw classifyThrowable("NH-SKIN-IO", ex);
         }
+
+        int status = response.statusCode();
+        if (status == 200) {
+            return parseLookupResponse(response.body(), normalizedUsername);
+        }
+
+        if (status == 404) {
+            throw FetchException.notFound("NH-SKIN-404", "Username not found");
+        }
+
+        if (status == 429) {
+            long retryAfterMs = parseRetryAfterMs(response.headers(), clock.nowMs());
+            throw FetchException.rateLimited("NH-SKIN-429", "Lookup rate limited", retryAfterMs, true);
+        }
+
+        if (status >= 500) {
+            long retryAfterMs = parseRetryAfterMs(response.headers(), clock.nowMs());
+            throw FetchException.network("NH-SKIN-5XX", "Lookup server error " + status, true, retryAfterMs);
+        }
+
+        String endpoint = primary ? "primary" : "legacy";
+        throw FetchException.internal(
+                "NH-SKIN-HTTP",
+                "Unexpected " + endpoint + " lookup response " + status,
+                status >= 408 && status < 500
+        );
     }
 
-    private static void invalidateTextureCacheEntry(Path path) {
+    private ResolvedSkin loadSkinViaMinecraft(ProfileIdentity identity, UUID fallbackUuid) throws FetchException {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            throw FetchException.internal("NH-SKIN-MC", "Minecraft instance unavailable", true);
+        }
+
+        SkinManager skinManager = minecraft.getSkinManager();
+        if (skinManager == null) {
+            throw FetchException.internal("NH-SKIN-MC", "SkinManager unavailable", true);
+        }
+
+        UUID sourceUuid = identity.uuid() != null ? identity.uuid() : sourceFallbackUuid(identity.username());
+        String sourceName = identity.username() == null || identity.username().isBlank()
+                ? sourceUuid.toString()
+                : identity.username();
+
+        GameProfile profile = new GameProfile(sourceUuid, sourceName);
+        return loadWithSkinManager(minecraft, skinManager, profile, fallbackUuid != null ? fallbackUuid : sourceUuid);
+    }
+
+    /*? if <=1.20.1 {*/
+    private ResolvedSkin loadWithSkinManager(Minecraft minecraft, SkinManager skinManager, GameProfile profile, UUID fallbackUuid) throws FetchException {
         try {
-            Files.deleteIfExists(path);
-        } catch (IOException ex) {
-            NickHider.LOGGER.debug("Failed to clear broken texture cache {}", path, ex);
+            MinecraftSessionService sessionService = minecraft.getMinecraftSessionService();
+            GameProfile filledProfile = sessionService.fillProfileProperties(profile, false);
+            Map<MinecraftProfileTexture.Type, MinecraftProfileTexture> textures = sessionService.getTextures(filledProfile, false);
+
+            MinecraftProfileTexture skinTexture = textures.get(MinecraftProfileTexture.Type.SKIN);
+            String modelName = modelNameFromSkinTexture(skinTexture, fallbackUuid);
+            Object skinLocation = skinTexture != null
+                    ? skinManager.registerTexture(skinTexture, MinecraftProfileTexture.Type.SKIN)
+                    : resolveDefaultSkinLocation(fallbackUuid, modelName);
+
+            Object capeLocation = registerOptionalTexture(skinManager, textures.get(MinecraftProfileTexture.Type.CAPE), MinecraftProfileTexture.Type.CAPE);
+            Object elytraLocation = registerOptionalTexture(skinManager, textures.get(MinecraftProfileTexture.Type.ELYTRA), MinecraftProfileTexture.Type.ELYTRA);
+            return new ResolvedSkin(skinLocation, modelName, capeLocation, elytraLocation);
+        } catch (Exception ex) {
+            throw classifyThrowable("NH-SKIN-120", ex);
         }
     }
 
-    private Path skinTexturePath(String normalizedUsername) {
-        return cacheDirectory.resolve(normalizedUsername + ".png");
-    }
-
-    private Path capeTexturePath(String normalizedUsername) {
-        return cacheDirectory.resolve(normalizedUsername + "-cape.png");
-    }
-
-    private Path elytraTexturePath(String normalizedUsername) {
-        return cacheDirectory.resolve(normalizedUsername + "-elytra.png");
-    }
-
-    private Path metaPath(String normalizedUsername) {
-        return cacheDirectory.resolve(normalizedUsername + ".json");
-    }
-
-    private NativeImage processLegacySkin(NativeImage source, String normalizedUsername) {
-        int width = source.getWidth();
-        int height = source.getHeight();
-        if (width != 64 || (height != 32 && height != 64)) {
-            source.close();
-            NickHider.LOGGER.warn("Discarding incorrectly sized ({}x{}) skin texture for {}", width, height, normalizedUsername);
+    private static Object registerOptionalTexture(
+            SkinManager skinManager,
+            MinecraftProfileTexture texture,
+            MinecraftProfileTexture.Type type
+    ) {
+        if (texture == null) {
             return null;
         }
-
-        boolean legacy = height == 32;
-        NativeImage image = source;
-        if (legacy) {
-            NativeImage expanded = new NativeImage(64, 64, true);
-            expanded.copyFrom(source);
-            source.close();
-            image = expanded;
-
-            image.fillRect(0, 32, 64, 32, 0);
-            image.copyRect(4, 16, 16, 32, 4, 4, true, false);
-            image.copyRect(8, 16, 16, 32, 4, 4, true, false);
-            image.copyRect(0, 20, 24, 32, 4, 12, true, false);
-            image.copyRect(4, 20, 16, 32, 4, 12, true, false);
-            image.copyRect(8, 20, 8, 32, 4, 12, true, false);
-            image.copyRect(12, 20, 16, 32, 4, 12, true, false);
-            image.copyRect(44, 16, -8, 32, 4, 4, true, false);
-            image.copyRect(48, 16, -8, 32, 4, 4, true, false);
-            image.copyRect(40, 20, 0, 32, 4, 12, true, false);
-            image.copyRect(44, 20, -8, 32, 4, 12, true, false);
-            image.copyRect(48, 20, -16, 32, 4, 12, true, false);
-            image.copyRect(52, 20, -8, 32, 4, 12, true, false);
-        }
-
-        setNoAlpha(image, 0, 0, 32, 16);
-        if (legacy) {
-            doNotchTransparencyHack(image, 32, 0, 64, 32);
-        }
-        setNoAlpha(image, 0, 16, 64, 32);
-        setNoAlpha(image, 16, 48, 48, 64);
-        return image;
+        return skinManager.registerTexture(texture, type);
     }
 
-    private static void doNotchTransparencyHack(NativeImage image, int minX, int minY, int maxX, int maxY) {
-        for (int x = minX; x < maxX; x++) {
-            for (int y = minY; y < maxY; y++) {
-                int pixel = getPixel(image, x, y);
-                if (((pixel >> 24) & 255) < 128) {
-                    return;
-                }
-            }
+    private static String modelNameFromSkinTexture(MinecraftProfileTexture skinTexture, UUID fallbackUuid) {
+        if (skinTexture == null) {
+            return resolveDefaultSkinModel(fallbackUuid);
         }
 
-        for (int x = minX; x < maxX; x++) {
-            for (int y = minY; y < maxY; y++) {
-                setPixel(image, x, y, getPixel(image, x, y) & 0x00FFFFFF);
-            }
+        String metadataModel = skinTexture.getMetadata("model");
+        if (metadataModel == null || metadataModel.isBlank()) {
+            return ResolvedSkin.MODEL_DEFAULT;
         }
-    }
 
-    private static void setNoAlpha(NativeImage image, int minX, int minY, int maxX, int maxY) {
-        for (int x = minX; x < maxX; x++) {
-            for (int y = minY; y < maxY; y++) {
-                setPixel(image, x, y, getPixel(image, x, y) | 0xFF000000);
+        return ResolvedSkin.MODEL_SLIM.equalsIgnoreCase(metadataModel)
+                ? ResolvedSkin.MODEL_SLIM
+                : ResolvedSkin.MODEL_DEFAULT;
+    }
+    /*?}*/
+
+    /*? if >=1.21.1 {*/
+    /*private ResolvedSkin loadWithSkinManager(Minecraft minecraft, SkinManager skinManager, GameProfile profile, UUID fallbackUuid) throws FetchException {
+        try {
+            PlayerSkin playerSkin = skinManager.getOrLoad(profile).get(SKIN_LOAD_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            if (playerSkin == null) {
+                return defaultSkin(fallbackUuid);
             }
+
+            String model = playerSkin.model() != null
+                    ? playerSkin.model().id()
+                    : ResolvedSkin.MODEL_DEFAULT;
+
+            return new ResolvedSkin(
+                    playerSkin.texture(),
+                    model,
+                    playerSkin.capeTexture(),
+                    playerSkin.elytraTexture()
+            );
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw FetchException.network("NH-SKIN-INTERRUPTED", "Skin load interrupted", true);
+        } catch (TimeoutException ex) {
+            throw FetchException.network("NH-SKIN-TIMEOUT", "Skin load timed out", true);
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+            throw classifyThrowable("NH-SKIN-121", cause);
         }
     }
+    */
+    /*?}*/
 
     private ResolvedSkin defaultSkin(UUID fallbackUuid) {
-        String modelName = resolveDefaultSkinModel(fallbackUuid);
-        Object location = resolveDefaultSkinLocation(fallbackUuid, modelName);
-        return new ResolvedSkin(location, modelName, null, null);
+        return defaultSkinProvider.defaultSkin(fallbackUuid != null ? fallbackUuid : NIL_UUID);
     }
 
-    private static int getPixel(NativeImage image, int x, int y) {
-        return image.getPixelRGBA(x, y);
+    private ResolvedSkin defaultSkinInternal(UUID fallbackUuid) {
+        UUID resolvedUuid = fallbackUuid != null ? fallbackUuid : NIL_UUID;
+        String modelName = resolveDefaultSkinModel(resolvedUuid);
+        Object texture = resolveDefaultSkinLocation(resolvedUuid, modelName);
+        return new ResolvedSkin(texture, modelName, null, null);
     }
 
-    private static void setPixel(NativeImage image, int x, int y, int value) {
-        image.setPixelRGBA(x, y, value);
-    }
+    private void clearLegacyDiskCacheFiles() {
+        if (!Files.isDirectory(cacheDirectory)) {
+            return;
+        }
 
-    private static Object createResourceLocation(String namespace, String path) {
-        try {
-            Class<?> resourceLocationClass = Class.forName("net.minecraft.resources.ResourceLocation");
-            return constructResourceLocation(resourceLocationClass, namespace, path);
-        } catch (ReflectiveOperationException ignored) {}
-
-        try {
-            Class<?> identifierClass = Class.forName("net.minecraft.util.Identifier");
-            return constructResourceLocation(identifierClass, namespace, path);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException("Unable to create resource identifier", ex);
+        try (var stream = Files.list(cacheDirectory)) {
+            stream
+                    .filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
+                        return fileName.endsWith(".png") || fileName.endsWith(".json");
+                    })
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException ex) {
+                            NickHider.LOGGER.debug("Failed to clean legacy skin cache file {}", path, ex);
+                        }
+                    });
+        } catch (IOException ex) {
+            NickHider.LOGGER.debug("Failed to scan legacy skin cache directory {}", cacheDirectory, ex);
         }
     }
 
-    private static Object constructResourceLocation(Class<?> locationClass, String namespace, String path) throws ReflectiveOperationException {
-        try {
-            Constructor<?> ctor = locationClass.getDeclaredConstructor(String.class, String.class);
-            ctor.setAccessible(true);
-            return ctor.newInstance(namespace, path);
-        } catch (NoSuchMethodException ignored) {}
-
-        for (String methodName : new String[] {"fromNamespaceAndPath", "of", "tryBuild"}) {
-            try {
-                Method method = locationClass.getMethod(methodName, String.class, String.class);
-                return method.invoke(null, namespace, path);
-            } catch (NoSuchMethodException ignored) {}
-        }
-
-        Method parseMethod = locationClass.getMethod("parse", String.class);
-        return parseMethod.invoke(null, namespace + ":" + path);
+    private static String normalize(String username) {
+        return username.trim().toLowerCase(Locale.ROOT);
     }
 
-    private static DynamicTexture createDynamicTexture(NativeImage image) {
-        try {
-            Constructor<DynamicTexture> ctor = DynamicTexture.class.getConstructor(NativeImage.class);
-            return ctor.newInstance(image);
-        } catch (ReflectiveOperationException ignored) {}
-
-        try {
-            Constructor<DynamicTexture> ctor = DynamicTexture.class.getConstructor(Supplier.class, NativeImage.class);
-            @SuppressWarnings("unchecked")
-            Supplier<String> idSupplier = () -> "nickhider-runtime";
-            return ctor.newInstance(idSupplier, image);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException("Unable to create dynamic texture", ex);
+    private static void addSourceUsername(Set<String> targets, String username) {
+        if (!StringUtil.isNullOrEmpty(username)) {
+            targets.add(normalize(username));
         }
     }
 
-    private static void registerTexture(TextureManager textureManager, Object location, DynamicTexture texture) {
-        for (Method method : textureManager.getClass().getMethods()) {
-            if (!"register".equals(method.getName()) || method.getParameterCount() != 2) {
-                continue;
+    private static String preferredCapeSource(String capeSourceUser, String skinSourceUser) {
+        if (!StringUtil.isNullOrEmpty(capeSourceUser)) {
+            return capeSourceUser;
+        }
+        return skinSourceUser;
+    }
+
+    private static UUID sourceFallbackUuid(String normalizedUsername) {
+        return UUID.nameUUIDFromBytes(("OfflinePlayer:" + normalizedUsername).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static ProfileIdentity parseLookupResponse(String body, String fallbackName) throws FetchException {
+        try {
+            JsonObject json = JsonParser.parseString(body).getAsJsonObject();
+            if (!json.has("id")) {
+                throw FetchException.internal("NH-SKIN-PARSE", "Lookup response missing id", false);
             }
-            Class<?>[] parameterTypes = method.getParameterTypes();
-            if (!parameterTypes[0].isInstance(location)) {
-                continue;
-            }
-            if (!method.getParameterTypes()[1].isAssignableFrom(texture.getClass())) {
-                continue;
-            }
-            try {
-                method.invoke(textureManager, location, texture);
-                return;
-            } catch (ReflectiveOperationException | IllegalArgumentException ignored) {}
+
+            String rawId = json.get("id").getAsString();
+            UUID uuid = parseDashedOrCompactUuid(rawId);
+            String name = json.has("name") ? json.get("name").getAsString() : fallbackName;
+            return new ProfileIdentity(uuid, name);
+        } catch (FetchException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw FetchException.internal("NH-SKIN-PARSE", "Lookup response parse failure", false);
         }
-        throw new IllegalStateException("Unable to register texture for current Minecraft version");
+    }
+
+    private static UUID parseDashedOrCompactUuid(String value) throws FetchException {
+        if (value == null || value.isBlank()) {
+            throw FetchException.internal("NH-SKIN-UUID", "UUID value is empty", false);
+        }
+
+        String normalized = value.trim();
+        if (normalized.length() == 32) {
+            normalized = normalized.substring(0, 8) + "-"
+                    + normalized.substring(8, 12) + "-"
+                    + normalized.substring(12, 16) + "-"
+                    + normalized.substring(16, 20) + "-"
+                    + normalized.substring(20);
+        }
+
+        try {
+            return UUID.fromString(normalized);
+        } catch (IllegalArgumentException ex) {
+            throw FetchException.internal("NH-SKIN-UUID", "Invalid UUID value", false);
+        }
+    }
+
+    private static long parseRetryAfterMs(HttpHeaders headers, long nowMs) {
+        String value = headers.firstValue("Retry-After").orElse(null);
+        if (value == null || value.isBlank()) {
+            return 0L;
+        }
+
+        String trimmed = value.trim();
+        try {
+            long seconds = Long.parseLong(trimmed);
+            return Math.max(0L, TimeUnit.SECONDS.toMillis(seconds));
+        } catch (NumberFormatException ignored) {
+            // RFC 7231 date form.
+        }
+
+        try {
+            ZonedDateTime retryAt = ZonedDateTime.parse(trimmed, DateTimeFormatter.RFC_1123_DATE_TIME);
+            return Math.max(0L, retryAt.toInstant().toEpochMilli() - nowMs);
+        } catch (RuntimeException ignored) {
+            return 0L;
+        }
+    }
+
+    private static long clamp(long value, long min, long max) {
+        if (value < min) {
+            return min;
+        }
+        return Math.min(value, max);
+    }
+
+    private static FetchException classifyThrowable(String baseCode, Throwable throwable) {
+        if (throwable instanceof FetchException fetchException) {
+            return fetchException;
+        }
+
+        if (containsGoAway(throwable)) {
+            return FetchException.network("NH-SKIN-GOAWAY", safeMessage(throwable), true);
+        }
+
+        String message = safeMessage(throwable).toLowerCase(Locale.ROOT);
+        if (message.contains("timeout") || message.contains("timed out")) {
+            return FetchException.network("NH-SKIN-TIMEOUT", safeMessage(throwable), true);
+        }
+
+        if (throwable instanceof IOException) {
+            return FetchException.network("NH-SKIN-NETWORK", safeMessage(throwable), true);
+        }
+
+        return FetchException.internal(baseCode, safeMessage(throwable), false);
+    }
+
+    private static boolean containsGoAway(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.toUpperCase(Locale.ROOT).contains("GOAWAY")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static String safeMessage(Throwable throwable) {
+        if (throwable == null || throwable.getMessage() == null || throwable.getMessage().isBlank()) {
+            return throwable == null ? "unknown" : throwable.getClass().getSimpleName();
+        }
+        return throwable.getMessage();
+    }
+
+    private static FetchException preferFailure(FetchException first, FetchException second) {
+        if (second.code() == ErrorCode.NOT_FOUND) {
+            return second;
+        }
+        if (first.code() == ErrorCode.RATE_LIMIT) {
+            return first;
+        }
+        return second;
+    }
+
+    private static ExecutorService createDefaultExecutor() {
+        return Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "nickhider-skin-fetcher");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     private static Object resolveDefaultSkinLocation(UUID fallbackUuid, String modelName) {
@@ -508,15 +702,21 @@ public final class SkinResolutionService {
             /*?}*/
         } catch (RuntimeException ignored) {}
 
-        String fallbackPath = "slim".equalsIgnoreCase(modelName)
+        String fallbackPath = ResolvedSkin.MODEL_SLIM.equalsIgnoreCase(modelName)
                 ? "textures/entity/player/slim/alex.png"
                 : "textures/entity/player/wide/steve.png";
+
         if (DEFAULT_SKIN_FALLBACK_WARNED.compareAndSet(false, true)) {
             NickHider.LOGGER.warn("Falling back to hardcoded default skin path for model {}", modelName);
-        } else {
-            NickHider.LOGGER.debug("Using hardcoded default skin path fallback for model {}", modelName);
         }
-        return createResourceLocation("minecraft", fallbackPath);
+
+        try {
+            Class<?> resourceLocationClass = Class.forName("net.minecraft.resources.ResourceLocation");
+            return resourceLocationClass.getMethod("parse", String.class)
+                    .invoke(null, "minecraft:" + fallbackPath);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("Unable to resolve default skin location", ex);
+        }
     }
 
     private static String resolveDefaultSkinModel(UUID fallbackUuid) {
@@ -532,5 +732,107 @@ public final class SkinResolutionService {
         return ResolvedSkin.MODEL_DEFAULT;
     }
 
-    private record SkinLookupResult(String skinUrl, String modelName, String capeUrl, String elytraUrl) {}
+    interface Clock {
+        long nowMs();
+    }
+
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
+
+    interface Jitter {
+        long nextJitterMs(long boundExclusive);
+    }
+
+    interface UsernameLookup {
+        ProfileIdentity lookup(String normalizedUsername) throws FetchException;
+    }
+
+    interface SkinLoader {
+        ResolvedSkin load(ProfileIdentity identity, UUID fallbackUuid) throws FetchException;
+    }
+
+    interface DefaultSkinProvider {
+        ResolvedSkin defaultSkin(UUID fallbackUuid);
+    }
+
+    static final class FetchException extends Exception {
+        private final ErrorCode code;
+        private final boolean retryable;
+        private final String diagnosticCode;
+        private final long retryAfterMs;
+
+        private FetchException(ErrorCode code, String diagnosticCode, String message, boolean retryable, long retryAfterMs) {
+            super(message);
+            this.code = code;
+            this.retryable = retryable;
+            this.diagnosticCode = diagnosticCode;
+            this.retryAfterMs = retryAfterMs;
+        }
+
+        static FetchException rateLimited(String diagnosticCode, String message, long retryAfterMs, boolean retryable) {
+            return new FetchException(ErrorCode.RATE_LIMIT, diagnosticCode, message, retryable, retryAfterMs);
+        }
+
+        static FetchException network(String diagnosticCode, String message, boolean retryable) {
+            return new FetchException(ErrorCode.NETWORK, diagnosticCode, message, retryable, 0L);
+        }
+
+        static FetchException network(String diagnosticCode, String message, boolean retryable, long retryAfterMs) {
+            return new FetchException(ErrorCode.NETWORK, diagnosticCode, message, retryable, retryAfterMs);
+        }
+
+        static FetchException notFound(String diagnosticCode, String message) {
+            return new FetchException(ErrorCode.NOT_FOUND, diagnosticCode, message, false, 0L);
+        }
+
+        static FetchException internal(String diagnosticCode, String message, boolean retryable) {
+            return new FetchException(ErrorCode.INTERNAL, diagnosticCode, message, retryable, 0L);
+        }
+
+        ErrorCode code() {
+            return code;
+        }
+
+        boolean retryable() {
+            return retryable;
+        }
+
+        FetchFailure toFailure() {
+            return new FetchFailure(code, diagnosticCode, getMessage(), retryAfterMs, retryable);
+        }
+    }
+
+    private enum ErrorCode {
+        NONE,
+        RATE_LIMIT,
+        NETWORK,
+        NOT_FOUND,
+        INTERNAL
+    }
+
+    record ProfileIdentity(UUID uuid, String username) {}
+
+    private record LookupCacheEntry(ProfileIdentity identity, long expiresAtMs) {}
+
+    private record FetchFailure(
+            ErrorCode code,
+            String diagnosticCode,
+            String detail,
+            long retryAfterMs,
+            boolean retryable
+    ) {
+        static FetchFailure internal(String diagnosticCode, String detail, long retryAfterMs, boolean retryable) {
+            return new FetchFailure(ErrorCode.INTERNAL, diagnosticCode, detail, retryAfterMs, retryable);
+        }
+    }
+
+    private static final class SourceState {
+        private final AtomicBoolean inFlight = new AtomicBoolean(false);
+        private ResolvedSkin lastGood;
+        private long lastSuccessAtMs;
+        private long nextRetryAtMs;
+        private int consecutiveFailures;
+        private ErrorCode lastErrorCode = ErrorCode.NONE;
+    }
 }

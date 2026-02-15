@@ -15,6 +15,8 @@
   "nickhider.config.others_name_template": "Szablon nazwy innych graczy",
   "nickhider.config.others_skin_user": "Nazwa użytkownika źródła skinu innych graczy",
   "nickhider.config.others_cape_user": "Nazwa użytkownika źródła peleryny innych graczy",
+  "nickhider.config.refresh_skin_cape": "Odśwież skin/pelerynę teraz",
+  "nickhider.config.skin_cape_status": "Status skin/peleryna: %s",
   "nickhider.config.save": "Zapisz",
   "nickhider.config.error.local_name_invalid": "Lokalna nazwa zastępcza musi pasować do [A-Za-z0-9_]{3,16}.",
   "nickhider.config.error.local_skin_user_invalid": "Źródło lokalnego skinu musi być puste lub pasować do [A-Za-z0-9_]{3,16}.",
