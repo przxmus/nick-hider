@@ -25,5 +25,6 @@
   "nickhider.config.error.others_template_missing_id": "Il template degli altri giocatori deve contenere [ID].",
   "nickhider.config.error.others_template_too_long": "Il template degli altri giocatori supera i 16 caratteri.",
   "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
-  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s",
+  "nickhider.config.enable_external_fallbacks": "Enable External Skin/Cape Fallbacks"
 }

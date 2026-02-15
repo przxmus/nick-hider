@@ -8,6 +8,7 @@ public final class PrivacyConfig {
     public boolean hideOtherNames;
     public boolean hideOtherSkins;
     public boolean hideOtherCapes;
+    public boolean enableExternalFallbacks;
     public String localName;
     public String localSkinUser;
     public String localCapeUser;
@@ -23,6 +24,7 @@ public final class PrivacyConfig {
         this.hideOtherNames = false;
         this.hideOtherSkins = false;
         this.hideOtherCapes = false;
+        this.enableExternalFallbacks = false;
         this.localName = "Player";
         this.localSkinUser = "";
         this.localCapeUser = "";
@@ -40,6 +42,7 @@ public final class PrivacyConfig {
         copy.hideOtherNames = this.hideOtherNames;
         copy.hideOtherSkins = this.hideOtherSkins;
         copy.hideOtherCapes = this.hideOtherCapes;
+        copy.enableExternalFallbacks = this.enableExternalFallbacks;
         copy.localName = this.localName;
         copy.localSkinUser = this.localSkinUser;
         copy.localCapeUser = this.localCapeUser;

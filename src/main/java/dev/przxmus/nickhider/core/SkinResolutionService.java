@@ -18,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashSet;
@@ -39,6 +38,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.client.resources.SkinManager;
+import net.minecraft.client.renderer.texture.HttpTexture;
+import net.minecraft.client.renderer.texture.TextureManager;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.StringUtil;
 
 /*? if >=1.21.1 {*/
@@ -49,6 +51,9 @@ import net.minecraft.util.StringUtil;
 public final class SkinResolutionService {
     private static final String LOOKUP_PRIMARY_BASE = "https://api.minecraftservices.com/minecraft/profile/lookup/name/";
     private static final String LOOKUP_LEGACY_BASE = "https://api.mojang.com/users/profiles/minecraft/";
+    private static final String EXTERNAL_SKIN_BASE = "https://mineskin.eu/skin/";
+    private static final String EXTERNAL_CAPE_LOOKUP_BASE = "https://api.capes.dev/load/";
+    private static final String EXTERNAL_FALLBACK_USER_AGENT = "NickHider/0.0.2 (+https://github.com/przxmus/nick-hider)";
 
     private static final long SWR_TTL_MS = Duration.ofMinutes(10).toMillis();
     private static final long LOOKUP_CACHE_TTL_MS = Duration.ofMinutes(10).toMillis();
@@ -73,6 +78,7 @@ public final class SkinResolutionService {
     private final Clock clock;
     private final Sleeper sleeper;
     private final Jitter jitter;
+    private final HttpClient externalHttpClient;
     private final UsernameLookup usernameLookup;
     private final SkinLoader skinLoader;
     private final DefaultSkinProvider defaultSkinProvider;
@@ -109,12 +115,20 @@ public final class SkinResolutionService {
         this.clock = clock;
         this.sleeper = sleeper;
         this.jitter = jitter;
+        this.externalHttpClient = HttpClient.newBuilder()
+                .connectTimeout(LOOKUP_CONNECT_TIMEOUT)
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
         this.usernameLookup = usernameLookup != null ? usernameLookup : createHttpUsernameLookup();
         this.skinLoader = skinLoader != null ? skinLoader : this::loadSkinViaMinecraft;
         this.defaultSkinProvider = defaultSkinProvider != null ? defaultSkinProvider : this::defaultSkinInternal;
     }
 
     public ResolvedSkin resolveOrFallback(String username, UUID fallbackUuid) {
+        return resolveOrFallback(username, fallbackUuid, false);
+    }
+
+    public ResolvedSkin resolveOrFallback(String username, UUID fallbackUuid, boolean allowExternalFallbacks) {
         if (StringUtil.isNullOrEmpty(username)) {
             return defaultSkin(fallbackUuid);
         }
@@ -134,7 +148,7 @@ public final class SkinResolutionService {
         }
 
         if (shouldFetch) {
-            enqueueFetch(normalizedUsername, fallbackUuid, state);
+            enqueueFetch(normalizedUsername, fallbackUuid, allowExternalFallbacks, state);
         }
 
         return lastGood != null ? lastGood : defaultSkin(fallbackUuid);
@@ -161,7 +175,7 @@ public final class SkinResolutionService {
             synchronized (state) {
                 state.nextRetryAtMs = 0L;
             }
-            enqueueFetch(normalizedUsername, sourceFallbackUuid(normalizedUsername), state);
+            enqueueFetch(normalizedUsername, sourceFallbackUuid(normalizedUsername), config.enableExternalFallbacks, state);
         }
     }
 
@@ -204,12 +218,12 @@ public final class SkinResolutionService {
         return "Idle";
     }
 
-    private void enqueueFetch(String normalizedUsername, UUID fallbackUuid, SourceState state) {
+    private void enqueueFetch(String normalizedUsername, UUID fallbackUuid, boolean allowExternalFallbacks, SourceState state) {
         if (!state.inFlight.compareAndSet(false, true)) {
             return;
         }
 
-        CompletableFuture.runAsync(() -> fetchAndStore(normalizedUsername, fallbackUuid, state), executor)
+        CompletableFuture.runAsync(() -> fetchAndStore(normalizedUsername, fallbackUuid, allowExternalFallbacks, state), executor)
                 .whenComplete((unused, throwable) -> {
                     state.inFlight.set(false);
                     if (throwable != null) {
@@ -219,7 +233,7 @@ public final class SkinResolutionService {
                 });
     }
 
-    private void fetchAndStore(String normalizedUsername, UUID fallbackUuid, SourceState state) {
+    private void fetchAndStore(String normalizedUsername, UUID fallbackUuid, boolean allowExternalFallbacks, SourceState state) {
         FetchFailure finalFailure = null;
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -246,6 +260,19 @@ public final class SkinResolutionService {
                     continue;
                 }
                 break;
+            }
+        }
+
+        if (allowExternalFallbacks) {
+            try {
+                ResolvedSkin external = loadExternalFallback(normalizedUsername, fallbackUuid);
+                applySuccess(state, external);
+                NickHider.LOGGER.info("[NH-SKIN-EXT] Using external fallback skin/cape source for {}", normalizedUsername);
+                return;
+            } catch (FetchException externalFailure) {
+                finalFailure = externalFailure.toFailure();
+            } catch (RuntimeException externalFailure) {
+                finalFailure = classifyThrowable("NH-SKIN-EXT", externalFailure).toFailure();
             }
         }
 
@@ -508,6 +535,224 @@ public final class SkinResolutionService {
     }
     */
     /*?}*/
+
+    private ResolvedSkin loadExternalFallback(String normalizedUsername, UUID fallbackUuid) throws FetchException {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            throw FetchException.internal("NH-SKIN-EXT-MC", "Minecraft instance unavailable", true);
+        }
+
+        TextureManager textureManager = minecraft.getTextureManager();
+        if (textureManager == null) {
+            throw FetchException.internal("NH-SKIN-EXT-MC", "TextureManager unavailable", true);
+        }
+
+        UUID resolvedFallbackUuid = fallbackUuid != null ? fallbackUuid : sourceFallbackUuid(normalizedUsername);
+        String modelName = resolveDefaultSkinModel(resolvedFallbackUuid);
+        ResourceLocation defaultSkin = asResourceLocation(resolveDefaultSkinLocation(resolvedFallbackUuid, modelName));
+
+        String encodedUsername = URLEncoder.encode(normalizedUsername, StandardCharsets.UTF_8);
+        String skinUrl = EXTERNAL_SKIN_BASE + encodedUsername;
+        probeTextureReachable(skinUrl, "NH-SKIN-EXT-SKIN");
+
+        ResourceLocation skinLocation = registerHttpTexture(
+                textureManager,
+                "external_skin/" + normalizedUsername,
+                skinUrl,
+                defaultSkin
+        );
+
+        String capeUrl = lookupExternalCapeUrl(normalizedUsername);
+        ResourceLocation capeLocation = null;
+        if (capeUrl != null && !capeUrl.isBlank()) {
+            probeTextureReachable(capeUrl, "NH-SKIN-EXT-CAPE");
+            capeLocation = registerHttpTexture(
+                    textureManager,
+                    "external_cape/" + normalizedUsername,
+                    capeUrl,
+                    skinLocation
+            );
+        }
+
+        return new ResolvedSkin(skinLocation, modelName, capeLocation, null);
+    }
+
+    private ResourceLocation registerHttpTexture(
+            TextureManager textureManager,
+            String path,
+            String textureUrl,
+            ResourceLocation fallbackTexture
+    ) throws FetchException {
+        ResourceLocation location = createResourceLocation(NickHider.MOD_ID, path);
+
+        try {
+            Files.createDirectories(cacheDirectory);
+            HttpTexture httpTexture = new HttpTexture(
+                    cacheDirectory.toFile(),
+                    textureUrl,
+                    fallbackTexture,
+                    true,
+                    () -> {}
+            );
+            textureManager.register(location, httpTexture);
+            return location;
+        } catch (RuntimeException | IOException ex) {
+            throw classifyThrowable("NH-SKIN-EXT-TEX", ex);
+        }
+    }
+
+    private void probeTextureReachable(String textureUrl, String diagnosticCode) throws FetchException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(textureUrl))
+                .GET()
+                .timeout(LOOKUP_TIMEOUT)
+                .header("User-Agent", EXTERNAL_FALLBACK_USER_AGENT)
+                .build();
+
+        HttpResponse<Void> response;
+        try {
+            response = externalHttpClient.send(request, HttpResponse.BodyHandlers.discarding());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw FetchException.network(diagnosticCode, "External fallback probe interrupted", true);
+        } catch (IOException ex) {
+            throw classifyThrowable(diagnosticCode, ex);
+        }
+
+        int status = response.statusCode();
+        if (status == 200) {
+            return;
+        }
+        if (status == 404) {
+            throw FetchException.notFound(diagnosticCode, "External texture not found");
+        }
+        if (status == 429) {
+            long retryAfterMs = parseRetryAfterMs(response.headers(), clock.nowMs());
+            throw FetchException.rateLimited(diagnosticCode, "External texture rate limited", retryAfterMs, true);
+        }
+        if (status >= 500) {
+            throw FetchException.network(diagnosticCode, "External texture server error " + status, true);
+        }
+        throw FetchException.internal(diagnosticCode, "External texture request failed with " + status, false);
+    }
+
+    private String lookupExternalCapeUrl(String normalizedUsername) throws FetchException {
+        String encodedUsername = URLEncoder.encode(normalizedUsername, StandardCharsets.UTF_8);
+        URI uri = URI.create(EXTERNAL_CAPE_LOOKUP_BASE + encodedUsername);
+
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .GET()
+                .timeout(LOOKUP_TIMEOUT)
+                .header("User-Agent", EXTERNAL_FALLBACK_USER_AGENT)
+                .header("Accept", "application/json")
+                .build();
+
+        HttpResponse<String> response;
+        try {
+            response = externalHttpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw FetchException.network("NH-SKIN-EXT-CAPES", "External cape lookup interrupted", true);
+        } catch (IOException ex) {
+            throw classifyThrowable("NH-SKIN-EXT-CAPES", ex);
+        }
+
+        int status = response.statusCode();
+        if (status == 404) {
+            return null;
+        }
+        if (status == 429) {
+            long retryAfterMs = parseRetryAfterMs(response.headers(), clock.nowMs());
+            throw FetchException.rateLimited("NH-SKIN-EXT-CAPES-429", "External cape lookup rate limited", retryAfterMs, true);
+        }
+        if (status >= 500) {
+            throw FetchException.network("NH-SKIN-EXT-CAPES-5XX", "External cape lookup server error " + status, true);
+        }
+        if (status != 200) {
+            throw FetchException.internal("NH-SKIN-EXT-CAPES-HTTP", "External cape lookup failed with " + status, false);
+        }
+
+        try {
+            JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+            String[] preferred = new String[] {"minecraft", "optifine", "minecraftcapes", "labymod", "5zig", "tlauncher", "skinmc"};
+            for (String key : preferred) {
+                String url = extractCapeUrl(root.getAsJsonObject(key));
+                if (url != null) {
+                    return url;
+                }
+            }
+
+            for (var entry : root.entrySet()) {
+                if (!(entry.getValue() instanceof JsonObject object)) {
+                    continue;
+                }
+                String url = extractCapeUrl(object);
+                if (url != null) {
+                    return url;
+                }
+            }
+            return null;
+        } catch (RuntimeException ex) {
+            throw FetchException.internal("NH-SKIN-EXT-CAPES-PARSE", "External cape lookup parse failure", false);
+        }
+    }
+
+    private static String extractCapeUrl(JsonObject object) {
+        if (object == null || !readBoolean(object, "exists")) {
+            return null;
+        }
+
+        JsonObject imageUrls = object.has("imageUrls") && object.get("imageUrls").isJsonObject()
+                ? object.getAsJsonObject("imageUrls")
+                : null;
+        if (imageUrls != null && imageUrls.has("base") && imageUrls.get("base").isJsonObject()) {
+            JsonObject base = imageUrls.getAsJsonObject("base");
+            String baseFull = readString(base, "full");
+            if (baseFull != null && !baseFull.isBlank()) {
+                return baseFull;
+            }
+        }
+
+        String imageUrl = readString(object, "imageUrl");
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            return imageUrl;
+        }
+
+        String capeUrl = readString(object, "capeUrl");
+        if (capeUrl != null && !capeUrl.isBlank()) {
+            return capeUrl;
+        }
+        return null;
+    }
+
+    private static boolean readBoolean(JsonObject object, String key) {
+        return object.has(key) && object.get(key).isJsonPrimitive() && object.get(key).getAsBoolean();
+    }
+
+    private static String readString(JsonObject object, String key) {
+        if (!object.has(key) || !object.get(key).isJsonPrimitive()) {
+            return null;
+        }
+        return object.get(key).getAsString();
+    }
+
+    private static ResourceLocation createResourceLocation(String namespace, String path) throws FetchException {
+        try {
+            ResourceLocation location = ResourceLocation.tryBuild(namespace, path);
+            if (location == null) {
+                throw new IllegalArgumentException("invalid resource location");
+            }
+            return location;
+        } catch (RuntimeException ex) {
+            throw FetchException.internal("NH-SKIN-EXT-RL", "Invalid resource location path " + namespace + ":" + path, false);
+        }
+    }
+
+    private static ResourceLocation asResourceLocation(Object value) throws FetchException {
+        if (value instanceof ResourceLocation location) {
+            return location;
+        }
+        throw FetchException.internal("NH-SKIN-EXT-RL", "Expected ResourceLocation fallback texture", false);
+    }
 
     private ResolvedSkin defaultSkin(UUID fallbackUuid) {
         return defaultSkinProvider.defaultSkin(fallbackUuid != null ? fallbackUuid : NIL_UUID);

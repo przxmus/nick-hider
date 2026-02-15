@@ -37,6 +37,7 @@ Nick Hider masks player identity details in common vanilla client rendering and 
 | Local cape        | Replaces your local cape and cape-based elytra texture |
 | Other names       | Template-based replacement with `[ID]` token support   |
 | Other skins/capes | Shared configured source usernames                     |
+| External fallback | Optional `mineskin.eu` + `api.capes.dev` (default: off) |
 | Runtime toggle    | Global `Enable Nick Hider` on/off switch               |
 
 ## Compatibility
@@ -58,6 +59,7 @@ Short matrix:
 - Hide local: name, skin, cape
 - Hide others: names, skins, capes
 - Global master toggle: `Enable Nick Hider`
+- Optional switch: `Enable External Skin/Cape Fallbacks` (default: off)
 
 ### Replacement Inputs
 
@@ -73,6 +75,7 @@ Short matrix:
 - Replacement usernames must be empty or match `[A-Za-z0-9_]{3,16}`.
 - Local replacement name must match `[A-Za-z0-9_]{3,16}`.
 - If cape masking is enabled but no valid cape source resolves, cape rendering is hidden instead of showing the original cape.
+- External fallbacks are queried only after official skin/cape lookups fail.
 
 ## Known Limits
 

@@ -27,6 +27,7 @@ public final class PrivacyConfigScreen extends Screen {
     private boolean hideOtherNames;
     private boolean hideOtherSkins;
     private boolean hideOtherCapes;
+    private boolean enableExternalFallbacks;
 
     private EditBox localNameInput;
     private EditBox localSkinUserInput;
@@ -59,6 +60,7 @@ public final class PrivacyConfigScreen extends Screen {
         this.hideOtherNames = config.hideOtherNames;
         this.hideOtherSkins = config.hideOtherSkins;
         this.hideOtherCapes = config.hideOtherCapes;
+        this.enableExternalFallbacks = config.enableExternalFallbacks;
     }
 
     @Override
@@ -138,6 +140,15 @@ public final class PrivacyConfigScreen extends Screen {
                 });
         this.addRenderableWidget(hideOtherCapesButton);
         addScrollableWidget(hideOtherCapesButton, y);
+        y += 26;
+
+        CycleButton<Boolean> externalFallbacksButton = CycleButton.onOffBuilder(this.enableExternalFallbacks)
+                .create(this.formLeft, this.contentTop, this.formWidth, 20, Component.translatable("nickhider.config.enable_external_fallbacks"), (button, value) -> {
+                    this.enableExternalFallbacks = value;
+                    refreshValidation();
+                });
+        this.addRenderableWidget(externalFallbacksButton);
+        addScrollableWidget(externalFallbacksButton, y);
         y += 40;
 
         this.localNameInput = addField(y, Component.translatable("nickhider.config.local_name"), 16, NickHider.runtime().config().localName);
@@ -221,6 +232,7 @@ public final class PrivacyConfigScreen extends Screen {
         config.hideOtherNames = this.hideOtherNames;
         config.hideOtherSkins = this.hideOtherSkins;
         config.hideOtherCapes = this.hideOtherCapes;
+        config.enableExternalFallbacks = this.enableExternalFallbacks;
         config.localName = this.localNameInput.getValue().trim();
         config.localSkinUser = this.localSkinUserInput.getValue().trim();
         config.localCapeUser = this.localCapeUserInput.getValue().trim();

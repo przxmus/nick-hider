@@ -105,7 +105,7 @@ public final class PrivacyRuntimeState {
         }
 
         String sourceUser = local ? config.localSkinUser : config.othersSkinUser;
-        return Optional.of(skinResolutionService.resolveOrFallback(sourceUser, targetUuid));
+        return Optional.of(skinResolutionService.resolveOrFallback(sourceUser, targetUuid, config.enableExternalFallbacks));
     }
 
     public boolean shouldOverrideCape(UUID targetUuid) {
@@ -142,7 +142,7 @@ public final class PrivacyRuntimeState {
             return Optional.empty();
         }
 
-        ResolvedSkin replacement = skinResolutionService.resolveOrFallback(sourceUser, targetUuid);
+        ResolvedSkin replacement = skinResolutionService.resolveOrFallback(sourceUser, targetUuid, config.enableExternalFallbacks);
         if (replacement.capeTextureLocation() == null && replacement.elytraTextureLocation() == null) {
             return Optional.empty();
         }

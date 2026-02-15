@@ -25,5 +25,6 @@
   "nickhider.config.error.others_template_missing_id": "Шаблон других игроков должен содержать [ID].",
   "nickhider.config.error.others_template_too_long": "Шаблон других игроков даёт более 16 символов.",
   "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
-  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s",
+  "nickhider.config.enable_external_fallbacks": "Enable External Skin/Cape Fallbacks"
 }
