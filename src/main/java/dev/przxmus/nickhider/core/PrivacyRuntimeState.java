@@ -4,6 +4,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.User;
 import net.minecraft.util.StringUtil;
 import dev.przxmus.nickhider.config.ConfigRepository;
 import dev.przxmus.nickhider.config.PrivacyConfig;
@@ -49,13 +50,17 @@ public final class PrivacyRuntimeState {
     }
 
     public Optional<ResolvedSkin> replacementSkin(UUID targetUuid) {
+        return replacementSkin(targetUuid, null);
+    }
+
+    public Optional<ResolvedSkin> replacementSkin(UUID targetUuid, String targetName) {
         PrivacyConfig config = configRepository.get();
         Minecraft minecraft = Minecraft.getInstance();
         if (!config.enabled || minecraft.player == null || targetUuid == null) {
             return Optional.empty();
         }
 
-        boolean local = targetUuid.equals(minecraft.player.getUUID());
+        boolean local = isLocalTarget(targetUuid, targetName, minecraft);
         if (local && !config.hideLocalSkin) {
             return Optional.empty();
         }
@@ -68,26 +73,34 @@ public final class PrivacyRuntimeState {
     }
 
     public boolean shouldOverrideCape(UUID targetUuid) {
+        return shouldOverrideCape(targetUuid, null);
+    }
+
+    public boolean shouldOverrideCape(UUID targetUuid, String targetName) {
         PrivacyConfig config = configRepository.get();
         Minecraft minecraft = Minecraft.getInstance();
         if (!config.enabled || minecraft.player == null || targetUuid == null) {
             return false;
         }
 
-        if (targetUuid.equals(minecraft.player.getUUID())) {
+        if (isLocalTarget(targetUuid, targetName, minecraft)) {
             return config.hideLocalCape;
         }
         return config.hideOtherCapes;
     }
 
     public Optional<ResolvedSkin> replacementCape(UUID targetUuid) {
-        if (!shouldOverrideCape(targetUuid)) {
+        return replacementCape(targetUuid, null);
+    }
+
+    public Optional<ResolvedSkin> replacementCape(UUID targetUuid, String targetName) {
+        if (!shouldOverrideCape(targetUuid, targetName)) {
             return Optional.empty();
         }
 
         PrivacyConfig config = configRepository.get();
         Minecraft minecraft = Minecraft.getInstance();
-        boolean local = targetUuid.equals(minecraft.player.getUUID());
+        boolean local = isLocalTarget(targetUuid, targetName, minecraft);
         String sourceUser = local ? preferredCapeSource(config.localCapeUser, config.localSkinUser) : preferredCapeSource(config.othersCapeUser, config.othersSkinUser);
         if (StringUtil.isNullOrEmpty(sourceUser)) {
             return Optional.empty();
@@ -114,7 +127,7 @@ public final class PrivacyRuntimeState {
             return originalName;
         }
 
-        if (targetUuid.equals(minecraft.player.getUUID())) {
+        if (isLocalTarget(targetUuid, originalName, minecraft)) {
             return config.hideLocalName ? config.localName : originalName;
         }
 
@@ -123,6 +136,27 @@ public final class PrivacyRuntimeState {
         }
 
         return config.othersNameTemplate.replace("[ID]", aliasService.getOrCreateShortId(targetUuid));
+    }
+
+    private static boolean isLocalTarget(UUID targetUuid, String targetName, Minecraft minecraft) {
+        User user = minecraft.getUser();
+        if (user != null) {
+            UUID accountUuid = user.getProfileId();
+            if (accountUuid != null && accountUuid.equals(targetUuid)) {
+                return true;
+            }
+        }
+
+        if (minecraft.player != null && targetUuid.equals(minecraft.player.getUUID())) {
+            return true;
+        }
+
+        if (targetName == null || targetName.isBlank() || user == null) {
+            return false;
+        }
+
+        String accountName = user.getName();
+        return accountName != null && !accountName.isBlank() && targetName.equalsIgnoreCase(accountName);
     }
 
     public void onWorldChange() {

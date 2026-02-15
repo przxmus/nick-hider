@@ -3,6 +3,7 @@ package dev.przxmus.nickhider.mixin;
 import com.mojang.authlib.GameProfile;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -15,141 +16,214 @@ import dev.przxmus.nickhider.core.ResolvedSkin;
 
 @Mixin(PlayerInfo.class)
 public abstract class PlayerInfoMixin {
+    private static final AtomicBoolean HOOK_FAILURE_LOGGED = new AtomicBoolean(false);
+
     @Shadow
     public abstract GameProfile getProfile();
 
-    @Inject(method = "getSkinLocation", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "getSkinLocation", at = @At("RETURN"), cancellable = true, require = 0)
     @SuppressWarnings({"rawtypes", "unchecked"})
     private void nickhider$overrideSkinLocation(CallbackInfoReturnable cir) {
-        var runtime = NickHider.runtimeOrNull();
-        if (runtime == null) {
-            return;
-        }
+        try {
+            var runtime = NickHider.runtimeOrNull();
+            if (runtime == null) {
+                return;
+            }
 
-        GameProfile profile = this.getProfile();
-        java.util.UUID profileId = ProfileCompat.id(profile);
-        if (profileId == null) {
-            return;
-        }
+            GameProfile profile = this.getProfile();
+            java.util.UUID profileId = ProfileCompat.id(profile);
+            String profileName = ProfileCompat.name(profile);
+            if (profileId == null) {
+                return;
+            }
 
-        runtime.replacementSkin(profileId)
-                .map(ResolvedSkin::textureLocation)
-                .ifPresent(cir::setReturnValue);
+            runtime.replacementSkin(profileId, profileName)
+                    .map(ResolvedSkin::textureLocation)
+                    .ifPresent(cir::setReturnValue);
+        } catch (Throwable throwable) {
+            nickhider$logHookFailure("getSkinLocation", throwable);
+        }
     }
 
-    @Inject(method = "getModelName", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "getModelName", at = @At("RETURN"), cancellable = true, require = 0)
     private void nickhider$overrideSkinModel(CallbackInfoReturnable<String> cir) {
-        var runtime = NickHider.runtimeOrNull();
-        if (runtime == null) {
-            return;
-        }
+        try {
+            var runtime = NickHider.runtimeOrNull();
+            if (runtime == null) {
+                return;
+            }
 
-        GameProfile profile = this.getProfile();
-        java.util.UUID profileId = ProfileCompat.id(profile);
-        if (profileId == null) {
-            return;
-        }
+            GameProfile profile = this.getProfile();
+            java.util.UUID profileId = ProfileCompat.id(profile);
+            String profileName = ProfileCompat.name(profile);
+            if (profileId == null) {
+                return;
+            }
 
-        runtime.replacementSkin(profileId)
-                .map(ResolvedSkin::modelName)
-                .ifPresent(cir::setReturnValue);
+            runtime.replacementSkin(profileId, profileName)
+                    .map(ResolvedSkin::modelName)
+                    .ifPresent(cir::setReturnValue);
+        } catch (Throwable throwable) {
+            nickhider$logHookFailure("getModelName", throwable);
+        }
     }
 
-    @Inject(method = "getCapeLocation", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "getCapeLocation", at = @At("RETURN"), cancellable = true, require = 0)
     @SuppressWarnings({"rawtypes", "unchecked"})
     private void nickhider$overrideCapeLocation(CallbackInfoReturnable cir) {
-        var runtime = NickHider.runtimeOrNull();
-        if (runtime == null) {
-            return;
-        }
+        try {
+            var runtime = NickHider.runtimeOrNull();
+            if (runtime == null) {
+                return;
+            }
 
-        GameProfile profile = this.getProfile();
-        java.util.UUID profileId = ProfileCompat.id(profile);
-        if (profileId == null || !runtime.shouldOverrideCape(profileId)) {
-            return;
-        }
+            GameProfile profile = this.getProfile();
+            java.util.UUID profileId = ProfileCompat.id(profile);
+            String profileName = ProfileCompat.name(profile);
+            if (profileId == null || !runtime.shouldOverrideCape(profileId, profileName)) {
+                return;
+            }
 
-        runtime.replacementCape(profileId)
-                .map(ResolvedSkin::capeTextureLocation)
-                .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
+            runtime.replacementCape(profileId, profileName)
+                    .map(ResolvedSkin::capeTextureLocation)
+                    .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
+        } catch (Throwable throwable) {
+            nickhider$logHookFailure("getCapeLocation", throwable);
+        }
     }
 
-    @Inject(method = "getElytraLocation", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "getElytraLocation", at = @At("RETURN"), cancellable = true, require = 0)
     @SuppressWarnings({"rawtypes", "unchecked"})
     private void nickhider$overrideElytraLocation(CallbackInfoReturnable cir) {
-        var runtime = NickHider.runtimeOrNull();
-        if (runtime == null) {
-            return;
-        }
+        try {
+            var runtime = NickHider.runtimeOrNull();
+            if (runtime == null) {
+                return;
+            }
 
-        GameProfile profile = this.getProfile();
-        java.util.UUID profileId = ProfileCompat.id(profile);
-        if (profileId == null || !runtime.shouldOverrideCape(profileId)) {
-            return;
-        }
+            GameProfile profile = this.getProfile();
+            java.util.UUID profileId = ProfileCompat.id(profile);
+            String profileName = ProfileCompat.name(profile);
+            if (profileId == null || !runtime.shouldOverrideCape(profileId, profileName)) {
+                return;
+            }
 
-        runtime.replacementCape(profileId)
-                .map(ResolvedSkin::elytraTextureLocation)
-                .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
+            runtime.replacementCape(profileId, profileName)
+                    .map(ResolvedSkin::elytraTextureLocation)
+                    .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
+        } catch (Throwable throwable) {
+            nickhider$logHookFailure("getElytraLocation", throwable);
+        }
+    }
+
+    private static void nickhider$logHookFailure(String hook, Throwable throwable) {
+        if (HOOK_FAILURE_LOGGED.compareAndSet(false, true)) {
+            NickHider.LOGGER.warn("Nick Hider skin hook failed in {}; falling back to vanilla behavior", hook, throwable);
+        } else {
+            NickHider.LOGGER.debug("Nick Hider skin hook failed in {}", hook, throwable);
+        }
     }
 
     /*? if >=1.20.2 {*/
     @Inject(method = "getSkin", at = @At("RETURN"), cancellable = true, require = 0)
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void nickhider$overrideSkinRecord(CallbackInfoReturnable cir) {
-        var runtime = NickHider.runtimeOrNull();
-        if (runtime == null) {
-            return;
-        }
+        try {
+            var runtime = NickHider.runtimeOrNull();
+            if (runtime == null) {
+                return;
+            }
 
-        GameProfile profile = this.getProfile();
-        java.util.UUID profileId = ProfileCompat.id(profile);
-        if (profileId == null) {
-            return;
-        }
+            GameProfile profile = this.getProfile();
+            java.util.UUID profileId = ProfileCompat.id(profile);
+            String profileName = ProfileCompat.name(profile);
+            if (profileId == null) {
+                return;
+            }
 
-        Object current = cir.getReturnValue();
-        if (current == null) {
-            return;
-        }
+            Object current = cir.getReturnValue();
+            if (current == null) {
+                return;
+            }
 
-        var replacementSkin = runtime.replacementSkin(profileId);
-        boolean overrideCape = runtime.shouldOverrideCape(profileId);
-        var replacementCape = overrideCape ? runtime.replacementCape(profileId) : java.util.Optional.<ResolvedSkin>empty();
-        if (replacementSkin.isEmpty() && !overrideCape) {
-            return;
-        }
+            var replacementSkin = runtime.replacementSkin(profileId, profileName);
+            boolean overrideCape = runtime.shouldOverrideCape(profileId, profileName);
+            var replacementCape = overrideCape
+                    ? runtime.replacementCape(profileId, profileName)
+                    : java.util.Optional.<ResolvedSkin>empty();
+            if (replacementSkin.isEmpty() && !overrideCape) {
+                return;
+            }
 
-        if (hasNoArgMethod(current, "body")) {
-            Object body = readObject(current, "body");
+            if (hasNoArgMethod(current, "body")) {
+                Object body = readObject(current, "body");
+                Object model = readObject(current, "model");
+                if (replacementSkin.isPresent()) {
+                    ResolvedSkin skin = replacementSkin.get();
+                    Object mappedTexture = asLocation(skin.textureLocation());
+                    if (mappedTexture != null) {
+                        body = replaceTextureAsset(body, mappedTexture);
+                    }
+                    model = resolveModel(skin.modelName(), model);
+                }
+
+                Object cape = readObject(current, "cape");
+                Object elytra = readObject(current, "elytra");
+                if (overrideCape) {
+                    if (replacementCape.isPresent()) {
+                        ResolvedSkin capeSkin = replacementCape.get();
+                        Object capeTexture = asLocation(capeSkin.capeTextureLocation());
+                        Object elytraTexture = asLocation(capeSkin.elytraTextureLocation());
+                        cape = replaceTextureAsset(cape, capeTexture);
+                        elytra = replaceTextureAsset(elytra, elytraTexture);
+                    } else {
+                        cape = null;
+                        elytra = null;
+                    }
+                }
+
+                Object replacement = instantiateSkinModern(
+                        current,
+                        body,
+                        cape,
+                        elytra,
+                        model,
+                        readBoolean(current, "secure")
+                );
+                if (replacement != null) {
+                    cir.setReturnValue(replacement);
+                }
+                return;
+            }
+
+            Object texture = readLocation(current, "texture");
             Object model = readObject(current, "model");
             if (replacementSkin.isPresent()) {
                 ResolvedSkin skin = replacementSkin.get();
                 Object mappedTexture = asLocation(skin.textureLocation());
                 if (mappedTexture != null) {
-                    body = replaceTextureAsset(body, mappedTexture);
+                    texture = mappedTexture;
                 }
                 model = resolveModel(skin.modelName(), model);
             }
 
-            Object cape = readObject(current, "cape");
-            Object elytra = readObject(current, "elytra");
+            Object cape = readLocation(current, "capeTexture");
+            Object elytra = readLocation(current, "elytraTexture");
             if (overrideCape) {
                 if (replacementCape.isPresent()) {
                     ResolvedSkin capeSkin = replacementCape.get();
-                    Object capeTexture = asLocation(capeSkin.capeTextureLocation());
-                    Object elytraTexture = asLocation(capeSkin.elytraTextureLocation());
-                    cape = replaceTextureAsset(cape, capeTexture);
-                    elytra = replaceTextureAsset(elytra, elytraTexture);
+                    cape = asLocation(capeSkin.capeTextureLocation());
+                    elytra = asLocation(capeSkin.elytraTextureLocation());
                 } else {
                     cape = null;
                     elytra = null;
                 }
             }
 
-            Object replacement = instantiateSkinModern(
+            Object replacement = instantiateSkin(
                     current,
-                    body,
+                    texture,
+                    readString(current, "textureUrl"),
                     cape,
                     elytra,
                     model,
@@ -158,44 +232,8 @@ public abstract class PlayerInfoMixin {
             if (replacement != null) {
                 cir.setReturnValue(replacement);
             }
-            return;
-        }
-
-        Object texture = readLocation(current, "texture");
-        Object model = readObject(current, "model");
-        if (replacementSkin.isPresent()) {
-            ResolvedSkin skin = replacementSkin.get();
-            Object mappedTexture = asLocation(skin.textureLocation());
-            if (mappedTexture != null) {
-                texture = mappedTexture;
-            }
-            model = resolveModel(skin.modelName(), model);
-        }
-
-        Object cape = readLocation(current, "capeTexture");
-        Object elytra = readLocation(current, "elytraTexture");
-        if (overrideCape) {
-            if (replacementCape.isPresent()) {
-                ResolvedSkin capeSkin = replacementCape.get();
-                cape = asLocation(capeSkin.capeTextureLocation());
-                elytra = asLocation(capeSkin.elytraTextureLocation());
-            } else {
-                cape = null;
-                elytra = null;
-            }
-        }
-
-        Object replacement = instantiateSkin(
-                current,
-                texture,
-                readString(current, "textureUrl"),
-                cape,
-                elytra,
-                model,
-                readBoolean(current, "secure")
-        );
-        if (replacement != null) {
-            cir.setReturnValue(replacement);
+        } catch (Throwable throwable) {
+            nickhider$logHookFailure("getSkin", throwable);
         }
     }
 

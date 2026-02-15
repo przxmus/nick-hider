@@ -26,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
@@ -37,6 +38,7 @@ import dev.przxmus.nickhider.NickHider;
 
 public final class SkinResolutionService {
     private static final Gson GSON = new Gson();
+    private static final AtomicBoolean DEFAULT_SKIN_FALLBACK_WARNED = new AtomicBoolean(false);
 
     private final Path cacheDirectory;
     private final HttpClient httpClient;
@@ -145,7 +147,7 @@ public final class SkinResolutionService {
                 processed.writeToFile(skinPath);
             }
             return true;
-        } catch (IOException ex) {
+        } catch (IOException | RuntimeException ex) {
             NickHider.LOGGER.warn("Failed to process downloaded skin for {}", normalizedUsername, ex);
             return false;
         }
@@ -276,6 +278,7 @@ public final class SkinResolutionService {
             NativeImage image = NativeImage.read(input);
             NativeImage processed = processLegacySkin(image, normalizedUsername);
             if (processed == null) {
+                invalidateSkinCacheEntry(normalizedUsername);
                 return null;
             }
 
@@ -287,8 +290,9 @@ public final class SkinResolutionService {
             Object capeLocation = registerOptionalTexture(capePath, "cached_cape/" + normalizedUsername, textureManager);
             Object elytraLocation = registerOptionalTexture(elytraPath, "cached_elytra/" + normalizedUsername, textureManager);
             return new ResolvedSkin(location, modelName, capeLocation, elytraLocation);
-        } catch (IOException ex) {
+        } catch (IOException | RuntimeException ex) {
             NickHider.LOGGER.warn("Failed to load cached skin {}", pngPath, ex);
+            invalidateSkinCacheEntry(normalizedUsername);
             return null;
         }
     }
@@ -303,9 +307,29 @@ public final class SkinResolutionService {
             Object location = createResourceLocation(NickHider.MOD_ID, textureKey);
             registerTexture(textureManager, location, createDynamicTexture(image));
             return location;
-        } catch (IOException ex) {
+        } catch (IOException | RuntimeException ex) {
             NickHider.LOGGER.warn("Failed to load cached texture {}", path, ex);
+            invalidateTextureCacheEntry(path);
             return null;
+        }
+    }
+
+    private void invalidateSkinCacheEntry(String normalizedUsername) {
+        try {
+            Files.deleteIfExists(skinTexturePath(normalizedUsername));
+            Files.deleteIfExists(metaPath(normalizedUsername));
+            Files.deleteIfExists(capeTexturePath(normalizedUsername));
+            Files.deleteIfExists(elytraTexturePath(normalizedUsername));
+        } catch (IOException ex) {
+            NickHider.LOGGER.debug("Failed to clear broken skin cache for {}", normalizedUsername, ex);
+        }
+    }
+
+    private static void invalidateTextureCacheEntry(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ex) {
+            NickHider.LOGGER.debug("Failed to clear broken texture cache {}", path, ex);
         }
     }
 
@@ -398,32 +422,11 @@ public final class SkinResolutionService {
     }
 
     private static int getPixel(NativeImage image, int x, int y) {
-        try {
-            Method method = NativeImage.class.getMethod("getPixelRGBA", int.class, int.class);
-            return (int) method.invoke(image, x, y);
-        } catch (ReflectiveOperationException ignored) {}
-
-        try {
-            Method method = NativeImage.class.getMethod("getPixel", int.class, int.class);
-            return (int) method.invoke(image, x, y);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException("Unable to read native image pixel", ex);
-        }
+        return image.getPixelRGBA(x, y);
     }
 
     private static void setPixel(NativeImage image, int x, int y, int value) {
-        try {
-            Method method = NativeImage.class.getMethod("setPixelRGBA", int.class, int.class, int.class);
-            method.invoke(image, x, y, value);
-            return;
-        } catch (ReflectiveOperationException ignored) {}
-
-        try {
-            Method method = NativeImage.class.getMethod("setPixel", int.class, int.class, int.class);
-            method.invoke(image, x, y, value);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException("Unable to write native image pixel", ex);
-        }
+        image.setPixelRGBA(x, y, value);
     }
 
     private static Object createResourceLocation(String namespace, String path) {
@@ -496,39 +499,36 @@ public final class SkinResolutionService {
 
     private static Object resolveDefaultSkinLocation(UUID fallbackUuid, String modelName) {
         try {
-            Method method = DefaultPlayerSkin.class.getMethod("getDefaultSkin", UUID.class);
-            return method.invoke(null, fallbackUuid);
-        } catch (ReflectiveOperationException ignored) {}
-
-        for (String methodName : new String[] {"getDefaultSkin", "getDefaultTexture", "getTexture"}) {
-            try {
-                Method method = DefaultPlayerSkin.class.getMethod(methodName, UUID.class);
-                return method.invoke(null, fallbackUuid);
-            } catch (ReflectiveOperationException ignored) {}
-        }
-
-        for (String methodName : new String[] {"getDefaultSkin", "getDefaultTexture", "getTexture"}) {
-            try {
-                Method method = DefaultPlayerSkin.class.getMethod(methodName);
-                return method.invoke(null);
-            } catch (ReflectiveOperationException ignored) {}
-        }
+            /*? if <=1.20.1 {*/
+            return DefaultPlayerSkin.getDefaultSkin(fallbackUuid);
+            /*?}*/
+            /*? if >=1.21.1 {*/
+            /*return DefaultPlayerSkin.get(fallbackUuid).texture();
+            */
+            /*?}*/
+        } catch (RuntimeException ignored) {}
 
         String fallbackPath = "slim".equalsIgnoreCase(modelName)
                 ? "textures/entity/player/slim/alex.png"
                 : "textures/entity/player/wide/steve.png";
-        NickHider.LOGGER.warn("Falling back to hardcoded default skin path for model {}", modelName);
+        if (DEFAULT_SKIN_FALLBACK_WARNED.compareAndSet(false, true)) {
+            NickHider.LOGGER.warn("Falling back to hardcoded default skin path for model {}", modelName);
+        } else {
+            NickHider.LOGGER.debug("Using hardcoded default skin path fallback for model {}", modelName);
+        }
         return createResourceLocation("minecraft", fallbackPath);
     }
 
     private static String resolveDefaultSkinModel(UUID fallbackUuid) {
         try {
-            Method method = DefaultPlayerSkin.class.getMethod("getSkinModelName", UUID.class);
-            Object value = method.invoke(null, fallbackUuid);
-            if (value instanceof String str) {
-                return str;
-            }
-        } catch (ReflectiveOperationException ignored) {}
+            /*? if <=1.20.1 {*/
+            return DefaultPlayerSkin.getSkinModelName(fallbackUuid);
+            /*?}*/
+            /*? if >=1.21.1 {*/
+            /*return DefaultPlayerSkin.get(fallbackUuid).model().id();
+            */
+            /*?}*/
+        } catch (RuntimeException ignored) {}
         return ResolvedSkin.MODEL_DEFAULT;
     }
 
