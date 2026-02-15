@@ -18,8 +18,6 @@ Client-side privacy masking for Minecraft player names, skins, and capes.
 - [Download on CurseForge](https://curseforge.com/minecraft/mc-mods/nick-hider)
 - [Download from GitHub Releases](https://github.com/przxmus/nick-hider/releases)
 
-> Maintainer note: replace the Modrinth and CurseForge placeholder slugs after public project pages are finalized.
-
 ## What This Mod Does
 
 Nick Hider masks player identity details in common vanilla client rendering and text paths.
