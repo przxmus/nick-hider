@@ -26,5 +26,5 @@
   "nickhider.config.error.others_template_invalid": "Szablon innych graczy musi pasować do [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "Szablon innych graczy musi zawierać [ID].",
   "nickhider.config.error.others_template_too_long": "Szablon innych graczy rozwija się do ponad 16 znaków.",
-  "nickhider.config.enable_external_fallbacks": "Włącz zewnętrzne fallbacki skin/peleryna"
+  "nickhider.config.enable_external_fallbacks": "Włącz zewnętrzne źródła zapasowe skinu/peleryny"
 }

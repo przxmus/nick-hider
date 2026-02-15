@@ -24,7 +24,7 @@
   "nickhider.config.error.others_template_invalid": "Šablona ostatních hráčů musí odpovídat [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "Šablona ostatních hráčů musí obsahovat [ID].",
   "nickhider.config.error.others_template_too_long": "Šablona ostatních hráčů po rozšíření přesahuje 16 znaků.",
-  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
-  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s",
-  "nickhider.config.enable_external_fallbacks": "Enable External Skin/Cape Fallbacks"
+  "nickhider.config.refresh_skin_cape": "Obnovit skin/plášť nyní",
+  "nickhider.config.skin_cape_status": "Stav skinu/pláště: %s",
+  "nickhider.config.enable_external_fallbacks": "Povolit externí záložní skin/plášť"
 }

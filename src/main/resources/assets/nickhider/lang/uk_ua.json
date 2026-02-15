@@ -24,7 +24,7 @@
   "nickhider.config.error.others_template_invalid": "Шаблон інших гравців має відповідати [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "Шаблон інших гравців має містити [ID].",
   "nickhider.config.error.others_template_too_long": "Шаблон інших гравців дає більше ніж 16 символів.",
-  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
-  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s",
-  "nickhider.config.enable_external_fallbacks": "Enable External Skin/Cape Fallbacks"
+  "nickhider.config.refresh_skin_cape": "Оновити скін/плащ зараз",
+  "nickhider.config.skin_cape_status": "Статус скіна/плаща: %s",
+  "nickhider.config.enable_external_fallbacks": "Увімкнути зовнішні резервні джерела скіна/плаща"
 }

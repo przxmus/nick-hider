@@ -24,7 +24,7 @@
   "nickhider.config.error.others_template_invalid": "其他玩家模板必须匹配 [A-Za-z0-9_[]-]{3,16}。",
   "nickhider.config.error.others_template_missing_id": "其他玩家模板必须包含 [ID]。",
   "nickhider.config.error.others_template_too_long": "其他玩家模板展开后超过 16 个字符。",
-  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
-  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s",
-  "nickhider.config.enable_external_fallbacks": "Enable External Skin/Cape Fallbacks"
+  "nickhider.config.refresh_skin_cape": "立即刷新皮肤/披风",
+  "nickhider.config.skin_cape_status": "皮肤/披风状态：%s",
+  "nickhider.config.enable_external_fallbacks": "启用外部皮肤/披风回退"
 }

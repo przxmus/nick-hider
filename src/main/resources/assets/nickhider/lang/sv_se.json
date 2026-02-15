@@ -24,7 +24,7 @@
   "nickhider.config.error.others_template_invalid": "Mallen för andra spelare måste matcha [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "Mallen för andra spelare måste innehålla [ID].",
   "nickhider.config.error.others_template_too_long": "Mallen för andra spelare blir längre än 16 tecken.",
-  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
-  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s",
-  "nickhider.config.enable_external_fallbacks": "Enable External Skin/Cape Fallbacks"
+  "nickhider.config.refresh_skin_cape": "Uppdatera skin/cape nu",
+  "nickhider.config.skin_cape_status": "Skin/cape-status: %s",
+  "nickhider.config.enable_external_fallbacks": "Aktivera externa skin/cape-fallbacks"
 }

@@ -24,7 +24,7 @@
   "nickhider.config.error.others_template_invalid": "La plantilla de otros jugadores debe coincidir con [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "La plantilla de otros jugadores debe contener [ID].",
   "nickhider.config.error.others_template_too_long": "La plantilla de otros jugadores supera los 16 caracteres.",
-  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
-  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s",
-  "nickhider.config.enable_external_fallbacks": "Enable External Skin/Cape Fallbacks"
+  "nickhider.config.refresh_skin_cape": "Actualizar skin/capa ahora",
+  "nickhider.config.skin_cape_status": "Estado de skin/capa: %s",
+  "nickhider.config.enable_external_fallbacks": "Activar fallbacks externos de skin/capa"
 }

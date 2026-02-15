@@ -24,7 +24,7 @@
   "nickhider.config.error.others_template_invalid": "Șablonul altor jucători trebuie să respecte [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "Șablonul altor jucători trebuie să conțină [ID].",
   "nickhider.config.error.others_template_too_long": "Șablonul altor jucători depășește 16 caractere.",
-  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
-  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s",
-  "nickhider.config.enable_external_fallbacks": "Enable External Skin/Cape Fallbacks"
+  "nickhider.config.refresh_skin_cape": "Reîmprospătează acum skin/cape",
+  "nickhider.config.skin_cape_status": "Stare skin/cape: %s",
+  "nickhider.config.enable_external_fallbacks": "Activează fallback-uri externe pentru skin/cape"
 }
