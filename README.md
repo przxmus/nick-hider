@@ -47,7 +47,6 @@ Nick Hider masks player identity details in common vanilla client rendering and 
 
 ## Compatibility
 
-- Mod version: `0.1.1`
 - Supported Minecraft versions: `1.20.1` and `1.21.1`
 - Loader support policy:
   - `1.20.1`: Fabric, Forge
