@@ -7,7 +7,7 @@ Client-side privacy masking for Minecraft player names, skins, and capes.
 </p>
 
 <p align="center">
-  <img alt="Minecraft" src="https://img.shields.io/badge/Minecraft-1.20%20to%201.21.11-2ea043">
+  <img alt="Minecraft" src="https://img.shields.io/badge/Minecraft-1.20.1%20%7C%201.21.1-2ea043">
   <img alt="Loaders" src="https://img.shields.io/badge/Loaders-Fabric%20%7C%20Forge%20%7C%20NeoForge-orange">
   <img alt="License" src="https://img.shields.io/badge/License-AGPL--3.0-red">
 </p>
@@ -48,13 +48,15 @@ Nick Hider masks player identity details in common vanilla client rendering and 
 ## Compatibility
 
 - Mod version: `0.1.1`
-- Minecraft range: `1.20` to `1.21.11` (inclusive)
-- Loader support policy: Fabric for all supported versions, Forge where Forge exists, and NeoForge where stable NeoForge support exists.
+- Supported Minecraft versions: `1.20.1` and `1.21.1`
+- Loader support policy:
+  - `1.20.1`: Fabric, Forge
+  - `1.21.1`: Fabric, Forge, NeoForge
 
 Short matrix:
 
-- `1.20.x`: Fabric, Forge, selective NeoForge
-- `1.21.x`: Fabric, selective NeoForge
+- `1.20.1`: Fabric, Forge
+- `1.21.1`: Fabric, Forge, NeoForge
 
 For exact jar availability per release, use [GitHub Releases](https://github.com/przxmus/nick-hider/releases).
 
