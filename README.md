@@ -51,12 +51,12 @@ Nick Hider masks player identity details in common vanilla client rendering and 
 - Supported Minecraft versions: `1.20.1` and `1.21.1`
 - Loader support policy:
   - `1.20.1`: Fabric, Forge
-  - `1.21.1`: Fabric, Forge, NeoForge
+  - `1.21.1`: Fabric, NeoForge
 
 Short matrix:
 
 - `1.20.1`: Fabric, Forge
-- `1.21.1`: Fabric, Forge, NeoForge
+- `1.21.1`: Fabric, NeoForge
 
 For exact jar availability per release, use [GitHub Releases](https://github.com/przxmus/nick-hider/releases).
 
