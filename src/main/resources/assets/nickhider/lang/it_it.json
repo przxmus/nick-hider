@@ -23,5 +23,7 @@
   "nickhider.config.error.others_cape_user_invalid": "La sorgente mantello degli altri giocatori deve essere vuota o corrispondere a [A-Za-z0-9_]{3,16}.",
   "nickhider.config.error.others_template_invalid": "Il template degli altri giocatori deve corrispondere a [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "Il template degli altri giocatori deve contenere [ID].",
-  "nickhider.config.error.others_template_too_long": "Il template degli altri giocatori supera i 16 caratteri."
+  "nickhider.config.error.others_template_too_long": "Il template degli altri giocatori supera i 16 caratteri.",
+  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
 }

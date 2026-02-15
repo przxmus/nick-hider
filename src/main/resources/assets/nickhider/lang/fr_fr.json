@@ -23,5 +23,7 @@
   "nickhider.config.error.others_cape_user_invalid": "La source de la cape des autres joueurs doit être vide ou correspondre à [A-Za-z0-9_]{3,16}.",
   "nickhider.config.error.others_template_invalid": "Le modèle des autres joueurs doit correspondre à [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "Le modèle des autres joueurs doit contenir [ID].",
-  "nickhider.config.error.others_template_too_long": "Le modèle des autres joueurs dépasse 16 caractères."
+  "nickhider.config.error.others_template_too_long": "Le modèle des autres joueurs dépasse 16 caractères.",
+  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
 }

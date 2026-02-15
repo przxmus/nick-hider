@@ -23,5 +23,7 @@
   "nickhider.config.error.others_cape_user_invalid": "अन्य खिलाड़ियों का केप स्रोत खाली होना चाहिए या [A-Za-z0-9_]{3,16} से मेल खाना चाहिए।",
   "nickhider.config.error.others_template_invalid": "अन्य खिलाड़ियों का टेम्पलेट [A-Za-z0-9_[]-]{3,16} से मेल खाना चाहिए।",
   "nickhider.config.error.others_template_missing_id": "अन्य खिलाड़ियों के टेम्पलेट में [ID] होना चाहिए।",
-  "nickhider.config.error.others_template_too_long": "अन्य खिलाड़ियों का टेम्पलेट 16 अक्षरों से लंबा हो जाता है।"
+  "nickhider.config.error.others_template_too_long": "अन्य खिलाड़ियों का टेम्पलेट 16 अक्षरों से लंबा हो जाता है।",
+  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
 }

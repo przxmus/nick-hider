@@ -23,5 +23,7 @@
   "nickhider.config.error.others_cape_user_invalid": "Басқа ойыншылар плащ көзі бос болуы немесе [A-Za-z0-9_]{3,16} үлгісіне сай болуы керек.",
   "nickhider.config.error.others_template_invalid": "Басқа ойыншылар үлгісі [A-Za-z0-9_[]-]{3,16} үлгісіне сай болуы керек.",
   "nickhider.config.error.others_template_missing_id": "Басқа ойыншылар үлгісінде [ID] болуы керек.",
-  "nickhider.config.error.others_template_too_long": "Басқа ойыншылар үлгісі 16 таңбадан асады."
+  "nickhider.config.error.others_template_too_long": "Басқа ойыншылар үлгісі 16 таңбадан асады.",
+  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
 }

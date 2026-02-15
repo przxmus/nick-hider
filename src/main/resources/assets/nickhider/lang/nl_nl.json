@@ -23,5 +23,7 @@
   "nickhider.config.error.others_cape_user_invalid": "Bron voor cape van andere spelers moet leeg zijn of overeenkomen met [A-Za-z0-9_]{3,16}.",
   "nickhider.config.error.others_template_invalid": "Sjabloon voor andere spelers moet overeenkomen met [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "Sjabloon voor andere spelers moet [ID] bevatten.",
-  "nickhider.config.error.others_template_too_long": "Sjabloon voor andere spelers wordt langer dan 16 tekens."
+  "nickhider.config.error.others_template_too_long": "Sjabloon voor andere spelers wordt langer dan 16 tekens.",
+  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
 }

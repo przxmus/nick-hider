@@ -23,5 +23,7 @@
   "nickhider.config.error.others_cape_user_invalid": "Die Umhang-Quelle für andere Spieler muss leer sein oder [A-Za-z0-9_]{3,16} entsprechen.",
   "nickhider.config.error.others_template_invalid": "Die Vorlage für andere Spieler muss [A-Za-z0-9_[]-]{3,16} entsprechen.",
   "nickhider.config.error.others_template_missing_id": "Die Vorlage für andere Spieler muss [ID] enthalten.",
-  "nickhider.config.error.others_template_too_long": "Die Vorlage für andere Spieler ergibt mehr als 16 Zeichen."
+  "nickhider.config.error.others_template_too_long": "Die Vorlage für andere Spieler ergibt mehr als 16 Zeichen.",
+  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
 }

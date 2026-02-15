@@ -23,5 +23,7 @@
   "nickhider.config.error.others_cape_user_invalid": "其他玩家披风来源必须为空或匹配 [A-Za-z0-9_]{3,16}。",
   "nickhider.config.error.others_template_invalid": "其他玩家模板必须匹配 [A-Za-z0-9_[]-]{3,16}。",
   "nickhider.config.error.others_template_missing_id": "其他玩家模板必须包含 [ID]。",
-  "nickhider.config.error.others_template_too_long": "其他玩家模板展开后超过 16 个字符。"
+  "nickhider.config.error.others_template_too_long": "其他玩家模板展开后超过 16 个字符。",
+  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
 }

@@ -23,5 +23,7 @@
   "nickhider.config.error.others_cape_user_invalid": "Cape-källa för andra spelare måste vara tom eller matcha [A-Za-z0-9_]{3,16}.",
   "nickhider.config.error.others_template_invalid": "Mallen för andra spelare måste matcha [A-Za-z0-9_[]-]{3,16}.",
   "nickhider.config.error.others_template_missing_id": "Mallen för andra spelare måste innehålla [ID].",
-  "nickhider.config.error.others_template_too_long": "Mallen för andra spelare blir längre än 16 tecken."
+  "nickhider.config.error.others_template_too_long": "Mallen för andra spelare blir längre än 16 tecken.",
+  "nickhider.config.refresh_skin_cape": "Refresh Skin/Cape Now",
+  "nickhider.config.skin_cape_status": "Skin/Cape Status: %s"
 }
