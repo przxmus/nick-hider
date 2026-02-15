@@ -23,7 +23,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -44,6 +43,15 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Validate release inputs
         env:
@@ -89,7 +97,43 @@ jobs:
           git push origin HEAD:main
           git push origin "${TAG}"
 
-      - name: Create draft GitHub release (assets attached asynchronously)
+      - name: Build all release artifacts
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon clean build
+
+      - name: Collect release jars
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+
+          mapfile -t jars < <(
+            find . -type f -path "*/build/libs/*.jar" \
+              ! -name "*-sources.jar" \
+              ! -name "*-javadoc.jar" \
+              ! -name "*-dev.jar" \
+              ! -name "*-shadow.jar" \
+              | sort -u
+          )
+
+          if [ "${#jars[@]}" -eq 0 ]; then
+            echo "No release jars found after build."
+            exit 1
+          fi
+
+          for jar in "${jars[@]}"; do
+            cp "${jar}" "release-artifacts/$(basename "${jar}")"
+          done
+
+          mapfile -t unique_jars < <(find release-artifacts -type f -name "*.jar" | sort -u)
+          if [ "${#unique_jars[@]}" -eq 0 ]; then
+            echo "No unique jars in release-artifacts."
+            exit 1
+          fi
+
+          printf '%s\n' "${unique_jars[@]}" > release_assets.txt
+
+      - name: Create GitHub release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
@@ -99,43 +143,41 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
+
           ARGS=()
           if [ "${PRERELEASE}" = "true" ]; then
             ARGS+=(--prerelease)
           fi
           ARGS+=(--generate-notes)
+
           if [ -n "${RELEASE_NOTES}" ]; then
             printf "%s\n" "${RELEASE_NOTES}" > release_notes.md
             ARGS+=(--notes-file release_notes.md)
           fi
+
+          mapfile -t assets < release_assets.txt
+
           gh release create "${TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --draft \
             --title "${RELEASE_NAME}" \
-            "${ARGS[@]}"
+            "${ARGS[@]}" \
+            "${assets[@]}"
 
-      - name: Trigger full CI Build for release commit
-        id: trigger_ci
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          RELEASE_SHA="$(git rev-parse HEAD)"
-          echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
-
-          gh workflow run build.yml \
-            --repo "${GITHUB_REPOSITORY}" \
-            --ref main
-
-          echo "Triggered full CI Build workflow_dispatch for commit ${RELEASE_SHA}."
-
-      - name: Print release orchestration summary
+      - name: Print release summary
         env:
           VERSION: ${{ inputs.version }}
-          RELEASE_SHA: ${{ steps.trigger_ci.outputs.release_sha }}
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
-          echo "Draft release ${TAG} created."
-          echo "Triggered CI Build for ${RELEASE_SHA}."
-          echo "Artifacts will be attached by the 'Release Asset Finalizer' workflow after CI Build succeeds."
+          asset_count="$(wc -l < release_assets.txt | tr -d '[:space:]')"
+
+          echo "Release ${TAG} created with ${asset_count} assets."
+
+          {
+            echo "## Manual Release Summary"
+            echo
+            echo "- Tag: \`${TAG}\`"
+            echo "- Release name: \`${{ inputs.release_name }}\`"
+            echo "- Prerelease: \`${{ inputs.prerelease }}\`"
+            echo "- Uploaded jar assets: \`${asset_count}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

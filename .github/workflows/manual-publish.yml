@@ -16,35 +16,450 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: manual-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  modrinth:
-    name: Publish to Modrinth
-    if: ${{ inputs.provider == 'both' || inputs.provider == 'modrinth' }}
-    uses: ./.github/workflows/modrinth-publish.yml
-    secrets: inherit
-
-  curseforge:
-    name: Publish to CurseForge
-    if: ${{ inputs.provider == 'both' || inputs.provider == 'curseforge' }}
-    uses: ./.github/workflows/curseforge-publish.yml
-    secrets: inherit
-
-  summary:
-    name: Publish Summary
-    needs: [modrinth, curseforge]
-    if: always()
+  publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Print orchestration summary
+      - name: Validate required secrets
+        env:
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          CURSEFORGE_PROJECT_ID: ${{ secrets.CURSEFORGE_PROJECT_ID }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_PROJECT_ID: ${{ secrets.MODRINTH_PROJECT_ID }}
         run: |
-          echo "Requested provider: ${{ inputs.provider }}"
-          echo "Modrinth workflow result: ${{ needs.modrinth.result }}"
-          echo "CurseForge workflow result: ${{ needs.curseforge.result }}"
+          set -euo pipefail
 
+          if [ "${{ inputs.provider }}" = "both" ] || [ "${{ inputs.provider }}" = "modrinth" ]; then
+            if [ -z "${MODRINTH_TOKEN:-}" ]; then
+              echo "Missing required secret: MODRINTH_TOKEN"
+              exit 1
+            fi
+            if [ -z "${MODRINTH_PROJECT_ID:-}" ]; then
+              echo "Missing required secret: MODRINTH_PROJECT_ID"
+              exit 1
+            fi
+          fi
+
+          if [ "${{ inputs.provider }}" = "both" ] || [ "${{ inputs.provider }}" = "curseforge" ]; then
+            if [ -z "${CURSEFORGE_TOKEN:-}" ]; then
+              echo "Missing required secret: CURSEFORGE_TOKEN"
+              exit 1
+            fi
+            if [ -z "${CURSEFORGE_PROJECT_ID:-}" ]; then
+              echo "Missing required secret: CURSEFORGE_PROJECT_ID"
+              exit 1
+            fi
+            if ! [[ "${CURSEFORGE_PROJECT_ID}" =~ ^[0-9]+$ ]]; then
+              echo "CURSEFORGE_PROJECT_ID must be an integer."
+              exit 1
+            fi
+          fi
+
+      - name: Select latest published release and download jars
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          rm -rf publish-assets
+          mkdir -p publish-assets
+
+          releases_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100")"
+          selected_release="$(
+            printf '%s' "${releases_json}" \
+            | jq -c '[.[] | select(.draft == false and .published_at != null)] | if length == 0 then empty else max_by(.published_at) end'
+          )"
+
+          if [ -z "${selected_release}" ]; then
+            echo "No published non-draft GitHub release found."
+            exit 1
+          fi
+
+          selected_tag="$(printf '%s' "${selected_release}" | jq -r '.tag_name')"
+          selected_is_prerelease="$(printf '%s' "${selected_release}" | jq -r '.prerelease')"
+          release_body="$(printf '%s' "${selected_release}" | jq -r '.body // ""')"
+
+          modrinth_channel="release"
+          curseforge_release_type="release"
+          if [ "${selected_is_prerelease}" = "true" ]; then
+            modrinth_channel="beta"
+            curseforge_release_type="beta"
+          fi
+
+          mapfile -t jar_asset_rows < <(
+            printf '%s' "${selected_release}" \
+            | jq -r '.assets[] | select(.name | endswith(".jar")) | [.name, .url] | @tsv'
+          )
+
+          if [ "${#jar_asset_rows[@]}" -eq 0 ]; then
+            echo "No .jar assets found in selected release ${selected_tag}."
+            exit 1
+          fi
+
+          for row in "${jar_asset_rows[@]}"; do
+            IFS=$'\t' read -r asset_name asset_api_url <<< "${row}"
+            gh api -H "Accept: application/octet-stream" "${asset_api_url}" > "publish-assets/${asset_name}"
+          done
+
+          shopt -s nullglob
+          jar_paths=(publish-assets/*.jar)
+          if [ "${#jar_paths[@]}" -eq 0 ]; then
+            echo "No downloaded jar files found."
+            exit 1
+          fi
+
+          > publish_items.jsonl
+          declare -A seen_version_numbers=()
+          declare -A seen_curseforge_keys=()
+          invalid_names=()
+
+          for jar_path in "${jar_paths[@]}"; do
+            file_name="$(basename "${jar_path}")"
+
+            if [[ "${file_name}" =~ ^nickhider-(fabric|forge|neoforge)-([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)\+mc([0-9]+([.][0-9]+){1,2})\.jar$ ]]; then
+              loader="${BASH_REMATCH[1]}"
+              mod_version="${BASH_REMATCH[2]}"
+              mc_version="${BASH_REMATCH[4]}"
+
+              modrinth_version_number="mc${mc_version}-${mod_version}-${loader}"
+              if [ -n "${seen_version_numbers[${modrinth_version_number}]:-}" ]; then
+                echo "Duplicate Modrinth version_number detected: ${modrinth_version_number}"
+                exit 1
+              fi
+              seen_version_numbers["${modrinth_version_number}"]=1
+
+              curseforge_key="${mc_version}|${mod_version}|${loader}"
+              if [ -n "${seen_curseforge_keys[${curseforge_key}]:-}" ]; then
+                echo "Duplicate CurseForge tuple detected: ${curseforge_key}"
+                exit 1
+              fi
+              seen_curseforge_keys["${curseforge_key}"]=1
+
+              loader_display="Fabric"
+              if [ "${loader}" = "forge" ]; then
+                loader_display="Forge"
+              elif [ "${loader}" = "neoforge" ]; then
+                loader_display="NeoForge"
+              fi
+
+              version_name="Nick Hider ${mod_version} for ${loader_display} ${mc_version}"
+              mc_family="$(printf '%s' "${mc_version}" | cut -d'.' -f1-2)"
+              curseforge_game_versions="Minecraft ${mc_family}:${mc_version},${loader_display}"
+
+              jq -nc \
+                --arg loader "${loader}" \
+                --arg mc_version "${mc_version}" \
+                --arg mod_version "${mod_version}" \
+                --arg modrinth_version_number "${modrinth_version_number}" \
+                --arg version_name "${version_name}" \
+                --arg curseforge_game_versions "${curseforge_game_versions}" \
+                --arg file_path "${jar_path}" \
+                --arg file_name "${file_name}" \
+                '{
+                  loader: $loader,
+                  mc_version: $mc_version,
+                  mod_version: $mod_version,
+                  modrinth_version_number: $modrinth_version_number,
+                  version_name: $version_name,
+                  curseforge_game_versions: $curseforge_game_versions,
+                  file_path: $file_path,
+                  file_name: $file_name
+                }' >> publish_items.jsonl
+            else
+              invalid_names+=("${file_name}")
+            fi
+          done
+
+          if [ "${#invalid_names[@]}" -gt 0 ]; then
+            echo "Found jar files with invalid names:"
+            printf ' - %s\n' "${invalid_names[@]}"
+            exit 1
+          fi
+
+          publish_count="$(jq -s 'length' publish_items.jsonl)"
+
+          {
+            echo "selected_tag=${selected_tag}"
+            echo "selected_is_prerelease=${selected_is_prerelease}"
+            echo "modrinth_channel=${modrinth_channel}"
+            echo "curseforge_release_type=${curseforge_release_type}"
+            echo "publish_count=${publish_count}"
+            echo "release_body<<EOF"
+            printf '%s\n' "${release_body}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Publish to Modrinth first
+        if: ${{ inputs.provider == 'both' || inputs.provider == 'modrinth' }}
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          MODRINTH_PROJECT_ID: ${{ secrets.MODRINTH_PROJECT_ID }}
+          RELEASE_BODY: ${{ steps.prepare.outputs.release_body }}
+          MODRINTH_CHANNEL: ${{ steps.prepare.outputs.modrinth_channel }}
+        run: |
+          set -euo pipefail
+
+          project_ref="$(printf '%s' "${MODRINTH_PROJECT_ID}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+          project_ref="${project_ref#https://modrinth.com/project/}"
+          project_ref="${project_ref#https://modrinth.com/mod/}"
+          project_ref="${project_ref#https://modrinth.com/plugin/}"
+          project_ref="${project_ref#https://modrinth.com/resourcepack/}"
+          project_ref="${project_ref#https://modrinth.com/shader/}"
+          project_ref="${project_ref#https://modrinth.com/datapack/}"
+          project_ref="${project_ref#http://modrinth.com/project/}"
+          project_ref="${project_ref#http://modrinth.com/mod/}"
+          project_ref="${project_ref#http://modrinth.com/plugin/}"
+          project_ref="${project_ref#http://modrinth.com/resourcepack/}"
+          project_ref="${project_ref#http://modrinth.com/shader/}"
+          project_ref="${project_ref#http://modrinth.com/datapack/}"
+          project_ref="${project_ref%%/*}"
+          project_ref="${project_ref%%\?*}"
+          project_ref="${project_ref%%#*}"
+
+          if [ -z "${project_ref}" ]; then
+            echo "Could not derive Modrinth project ID/slug from MODRINTH_PROJECT_ID."
+            exit 1
+          fi
+
+          project_ref_encoded="$(jq -rn --arg v "${project_ref}" '$v|@uri')"
+          lookup_enabled="true"
+
+          http_status="$(
+            curl -sS \
+              -o modrinth_versions_response.json \
+              -w '%{http_code}' \
+              -H "Authorization: ${MODRINTH_TOKEN}" \
+              -H "User-Agent: github-actions/${GITHUB_REPOSITORY}" \
+              "https://api.modrinth.com/v2/project/${project_ref_encoded}/version"
+          )"
+
+          if [ "${http_status}" = "200" ]; then
+            jq -r '.[].version_number // empty' modrinth_versions_response.json | sort -u > existing_version_numbers.txt
+          elif [ "${http_status}" = "404" ] || [ "${http_status}" = "403" ]; then
+            lookup_enabled="false"
+            : > existing_version_numbers.txt
+            echo "Warning: Modrinth existing-version lookup unavailable (HTTP ${http_status})."
+          else
+            echo "Failed to fetch Modrinth versions. HTTP ${http_status}"
+            cat modrinth_versions_response.json || true
+            exit 1
+          fi
+
+          published=0
+          failed=0
+          skipped=0
+          total="$(jq -s 'length' publish_items.jsonl)"
+
+          while IFS= read -r item; do
+            [ -n "${item}" ] || continue
+
+            version_number="$(printf '%s' "${item}" | jq -r '.modrinth_version_number')"
+            version_name="$(printf '%s' "${item}" | jq -r '.version_name')"
+            mc_version="$(printf '%s' "${item}" | jq -r '.mc_version')"
+            loader="$(printf '%s' "${item}" | jq -r '.loader')"
+            file_path="$(printf '%s' "${item}" | jq -r '.file_path')"
+            file_name="$(printf '%s' "${item}" | jq -r '.file_name')"
+
+            if grep -Fxq "${version_number}" existing_version_numbers.txt; then
+              echo "Skipping existing Modrinth version: ${version_number}"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            data_json="$(
+              jq -nc \
+                --arg name "${version_name}" \
+                --arg version_number "${version_number}" \
+                --arg changelog "${RELEASE_BODY}" \
+                --arg game_version "${mc_version}" \
+                --arg channel "${MODRINTH_CHANNEL}" \
+                --arg loader "${loader}" \
+                --arg project "${project_ref}" \
+                --arg file_name "${file_name}" \
+                '{
+                  name: $name,
+                  version_number: $version_number,
+                  changelog: $changelog,
+                  dependencies: [],
+                  game_versions: [$game_version],
+                  version_type: $channel,
+                  loaders: [$loader],
+                  featured: false,
+                  status: "listed",
+                  project_id: $project,
+                  file_parts: [$file_name],
+                  primary_file: $file_name
+                }'
+            )"
+
+            echo "Publishing Modrinth: ${version_number} (${file_name})"
+            http_code="$(
+              curl -sS \
+                -o modrinth_response.json \
+                -w '%{http_code}' \
+                -X POST "https://api.modrinth.com/v2/version" \
+                -H "Authorization: ${MODRINTH_TOKEN}" \
+                -H "User-Agent: github-actions/${GITHUB_REPOSITORY}" \
+                -F "data=${data_json}" \
+                -F "${file_name}=@${file_path};type=application/java-archive"
+            )"
+
+            if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 300 ]; then
+              published=$((published + 1))
+            else
+              echo "Failed Modrinth publish for ${version_number}. HTTP ${http_code}"
+              cat modrinth_response.json || true
+              failed=$((failed + 1))
+            fi
+          done < <(jq -c '.' publish_items.jsonl)
+
+          echo "Modrinth summary: total=${total} published=${published} skipped=${skipped} failed=${failed} lookup_enabled=${lookup_enabled}"
+          if [ "${failed}" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Publish to CurseForge second
+        if: ${{ inputs.provider == 'both' || inputs.provider == 'curseforge' }}
+        env:
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          CURSEFORGE_PROJECT_ID: ${{ secrets.CURSEFORGE_PROJECT_ID }}
+          RELEASE_TYPE: ${{ steps.prepare.outputs.curseforge_release_type }}
+          RELEASE_BODY: ${{ steps.prepare.outputs.release_body }}
+        run: |
+          set -euo pipefail
+
+          versions_json="$(curl -sS -H "X-Api-Token: ${CURSEFORGE_TOKEN}" "https://minecraft.curseforge.com/api/game/versions")"
+          types_json="$(curl -sS -H "X-Api-Token: ${CURSEFORGE_TOKEN}" "https://minecraft.curseforge.com/api/game/version-types")"
+
+          resolve_game_versions() {
+            local csv="$1"
+            local IFS=','
+            read -ra tokens <<< "${csv}"
+            local ids=()
+
+            for raw in "${tokens[@]}"; do
+              token="$(printf '%s' "${raw}" | sed -E 's/^[[:space:]]+//;s/[[:space:]]+$//')"
+              [ -n "${token}" ] || continue
+
+              if [[ "${token}" =~ ^[0-9]+$ ]]; then
+                ids+=("${token}")
+                continue
+              fi
+
+              type_hint="blank"
+              lookup="${token}"
+              if [[ "${token}" == *:* ]]; then
+                type_hint="${token%%:*}"
+                lookup="${token#*:}"
+              fi
+
+              type_id=""
+              if [ "${type_hint}" != "blank" ]; then
+                if [[ "${type_hint}" =~ ^[0-9]+$ ]]; then
+                  type_id="${type_hint}"
+                else
+                  type_id="$(
+                    printf '%s' "${types_json}" \
+                      | jq -r --arg v "${type_hint}" '.[] | select(.name == $v or .slug == $v) | .id' \
+                      | head -n1
+                  )"
+                fi
+              fi
+
+              mapfile -t matched_ids < <(
+                printf '%s' "${versions_json}" \
+                  | jq -r --arg v "${lookup}" --arg tid "${type_id}" '
+                      .[]
+                      | select(.name == $v or .slug == $v)
+                      | select($tid == "" or (.gameVersionTypeID|tostring) == $tid)
+                      | .id
+                    '
+              )
+
+              if [ "${#matched_ids[@]}" -eq 0 ]; then
+                echo "Could not resolve CurseForge game version token: ${token}" >&2
+                return 1
+              fi
+
+              for id in "${matched_ids[@]}"; do
+                ids+=("${id}")
+              done
+            done
+
+            printf '%s\n' "${ids[@]}" | awk 'NF' | sort -u | paste -sd ',' -
+          }
+
+          published=0
+          failed=0
+          total="$(jq -s 'length' publish_items.jsonl)"
+
+          while IFS= read -r item; do
+            [ -n "${item}" ] || continue
+
+            display_name="$(printf '%s' "${item}" | jq -r '.version_name')"
+            file_path="$(printf '%s' "${item}" | jq -r '.file_path')"
+            game_versions_csv="$(printf '%s' "${item}" | jq -r '.curseforge_game_versions')"
+
+            if ! game_version_ids_csv="$(resolve_game_versions "${game_versions_csv}")"; then
+              echo "Failed to resolve game versions for ${display_name}"
+              failed=$((failed + 1))
+              continue
+            fi
+
+            metadata_json="$(
+              jq -nc \
+                --arg changelog "${RELEASE_BODY}" \
+                --arg display_name "${display_name}" \
+                --arg release_type "${RELEASE_TYPE}" \
+                --argjson game_versions "$(printf '%s' "${game_version_ids_csv}" | jq -R 'split(",") | map(tonumber)')" \
+                '{
+                  changelog: $changelog,
+                  changelogType: "markdown",
+                  displayName: $display_name,
+                  releaseType: $release_type,
+                  gameVersions: $game_versions
+                }'
+            )"
+
+            echo "Publishing CurseForge: ${display_name} ($(basename "${file_path}"))"
+            http_code="$(
+              curl -sS \
+                -o curseforge_response.json \
+                -w '%{http_code}' \
+                -X POST "https://minecraft.curseforge.com/api/projects/${CURSEFORGE_PROJECT_ID}/upload-file" \
+                -H "X-Api-Token: ${CURSEFORGE_TOKEN}" \
+                -F "file=@${file_path};type=application/java-archive" \
+                -F "metadata=${metadata_json}"
+            )"
+
+            if [ "${http_code}" = "200" ]; then
+              published=$((published + 1))
+            else
+              echo "Failed CurseForge publish for ${display_name}. HTTP ${http_code}"
+              cat curseforge_response.json || true
+              failed=$((failed + 1))
+            fi
+          done < <(jq -c '.' publish_items.jsonl)
+
+          echo "CurseForge summary: total=${total} published=${published} failed=${failed}"
+          if [ "${failed}" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Print summary
+        run: |
+          set -euo pipefail
           {
             echo "## Manual Publish Summary"
             echo
             echo "- Requested provider: \`${{ inputs.provider }}\`"
-            echo "- Modrinth workflow result: \`${{ needs.modrinth.result }}\`"
-            echo "- CurseForge workflow result: \`${{ needs.curseforge.result }}\`"
+            echo "- Selected GitHub release tag: \`${{ steps.prepare.outputs.selected_tag }}\`"
+            echo "- Selected release is prerelease: \`${{ steps.prepare.outputs.selected_is_prerelease }}\`"
+            echo "- Jars discovered: \`${{ steps.prepare.outputs.publish_count }}\`"
+            echo "- Publish order: \`Modrinth -> CurseForge\`"
           } >> "${GITHUB_STEP_SUMMARY}"
