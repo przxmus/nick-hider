@@ -24,9 +24,10 @@ Nick Hider masks player identity details in common vanilla client rendering and 
 
 1. Download the jar for your exact Minecraft + loader combination.
 2. Put the jar in your Minecraft `mods` folder.
-3. Launch the game and open settings from Mod Menu (Fabric + Mod Menu), Mod List (Forge/NeoForge), or the keybind `Open Nick Hider Settings` (default unbound).
+3. Launch the game and open settings from Mod Menu (Fabric + Mod Menu), Mod List (Forge/NeoForge), keybind `Open Nick Hider Settings` (default unbound), or command `/nickhider`.
 4. First-time setup suggestion: enable `Hide Local Name`, `Hide Local Skin`, and `Hide Local Cape`, then set `Local Replacement Name` to a neutral alias.
 5. Join a world/server and verify your own name and skin/cape are masked; enable `Hide Other Names/Skins/Capes` if you also want to mask other players.
+6. After config save/reload, Nick Hider automatically refreshes skin/cape sources in the background.
 
 ## Features At A Glance
 
@@ -39,6 +40,7 @@ Nick Hider masks player identity details in common vanilla client rendering and 
 | Other skins/capes | Shared configured source usernames                     |
 | External fallback | Optional `mineskin.eu` + `api.capes.dev` (default: off) |
 | Runtime toggle    | Global `Enable Nick Hider` on/off switch               |
+| Open config       | Keybind + `/nickhider` command                         |
 
 ## Compatibility
 
@@ -76,6 +78,13 @@ Short matrix:
 - Local replacement name must match `[A-Za-z0-9_]{3,16}`.
 - If cape masking is enabled but no valid cape source resolves, cape rendering is hidden instead of showing the original cape.
 - External fallbacks are queried only after official skin/cape lookups fail.
+- Saving or reloading config clears runtime cache and starts an automatic source prefetch.
+
+### Diagnostics Logs
+
+- Skin/cape runtime diagnostics use stable `NH-*` codes (for example `NH-SKIN-FETCH`, `NH-SKIN-RECOVERED`, `NH-HOOK-FAIL`).
+- Repeated identical failures are throttled per source user to avoid console spam.
+- Hook failures log the first incident as warning, and subsequent repeats as debug.
 
 ## Known Limits
 
