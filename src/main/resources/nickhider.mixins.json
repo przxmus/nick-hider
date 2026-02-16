@@ -6,6 +6,7 @@
   "refmap": "nickhider.refmap.json",
   "client": [
     "EntityRendererNameTagMixin",
+    "FtbFaceIconMixin",
     "PlayerInfoLegacyMixin",
     "PlayerInfoSkinRecordMixin",
     "PlayerTabOverlayMixin",
