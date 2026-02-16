@@ -69,6 +69,41 @@ class IdentityMaskingServiceTest {
         assertEquals("RealOther", otherHead.name());
     }
 
+    @Test
+    void disabledConfigKeepsOriginalIdentity() {
+        IdentityMaskingService service = newService();
+        PrivacyConfig config = new PrivacyConfig();
+        config.enabled = false;
+        config.hideLocalName = true;
+        config.hideLocalSkin = true;
+
+        UUID localUuid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        MaskedProfile nameMasked = service.maskForName(config, true, localUuid, "RealLocal");
+        MaskedProfile headMasked = service.maskForHead(config, true, localUuid, "RealLocal");
+
+        assertEquals(localUuid, nameMasked.uuid());
+        assertEquals("RealLocal", nameMasked.name());
+        assertEquals(localUuid, headMasked.uuid());
+        assertEquals("RealLocal", headMasked.name());
+    }
+
+    @Test
+    void headMaskingForOthersFollowsRenderedAliasWhenEnabled() {
+        IdentityMaskingService service = newService();
+        PrivacyConfig config = new PrivacyConfig();
+        config.enabled = true;
+        config.hideOtherNames = true;
+        config.hideOtherSkins = true;
+        config.othersNameTemplate = "Player_[ID]";
+
+        UUID otherUuid = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        MaskedProfile otherHead = service.maskForHead(config, false, otherUuid, "RealOther");
+
+        assertNotEquals(otherUuid, otherHead.uuid());
+        assertNotEquals("RealOther", otherHead.name());
+        assertEquals(service.syntheticUuid(otherHead.name()), otherHead.uuid());
+    }
+
     private IdentityMaskingService newService() {
         return new IdentityMaskingService(new PlayerAliasService(tempDir.resolve("ids.json")));
     }
