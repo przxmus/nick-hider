@@ -60,8 +60,9 @@ class IdentityMaskingServiceTest {
 
         UUID localUuid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         MaskedProfile localHead = service.maskForHead(config, true, localUuid, "RealLocal");
-        assertEquals("RealLocal", localHead.name());
-        assertEquals(service.syntheticUuid("RealLocal"), localHead.uuid());
+        assertNotEquals("RealLocal", localHead.name());
+        assertNotEquals(localUuid, localHead.uuid());
+        assertEquals(service.syntheticUuid(localHead.name()), localHead.uuid());
 
         UUID otherUuid = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
         MaskedProfile otherHead = service.maskForHead(config, false, otherUuid, "RealOther");
@@ -102,6 +103,21 @@ class IdentityMaskingServiceTest {
         assertNotEquals(otherUuid, otherHead.uuid());
         assertNotEquals("RealOther", otherHead.name());
         assertEquals(service.syntheticUuid(otherHead.name()), otherHead.uuid());
+    }
+
+    @Test
+    void headMaskingUsesConfiguredSkinSourceWhenProvided() {
+        IdentityMaskingService service = newService();
+        PrivacyConfig config = new PrivacyConfig();
+        config.enabled = true;
+        config.hideLocalSkin = true;
+        config.localSkinUser = "notch";
+
+        UUID localUuid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        MaskedProfile localHead = service.maskForHead(config, true, localUuid, "RealLocal");
+
+        assertEquals("notch", localHead.name());
+        assertEquals(service.syntheticUuid("notch"), localHead.uuid());
     }
 
     private IdentityMaskingService newService() {

@@ -180,20 +180,56 @@ public final class PrivacyRuntimeState {
     private GameProfile maskProfile(UUID targetUuid, String originalName, boolean forHead) {
         PrivacyConfig config = configRepository.get();
         Minecraft minecraft = Minecraft.getInstance();
-        if (!config.enabled || minecraft.player == null || targetUuid == null || originalName == null || originalName.isBlank()) {
+        if (!config.enabled || minecraft.player == null || targetUuid == null) {
             return null;
         }
 
-        boolean local = isLocalTarget(targetUuid, originalName, minecraft);
-        MaskedProfile maskedProfile = forHead
-                ? identityMaskingService.maskForHead(config, local, targetUuid, originalName)
-                : identityMaskingService.maskForName(config, local, targetUuid, originalName);
+        String resolvedName = resolveRenderableName(targetUuid, originalName, minecraft);
+        if (resolvedName == null || resolvedName.isBlank()) {
+            return null;
+        }
 
-        if (maskedProfile.isSameAs(targetUuid, originalName)) {
+        boolean local = isLocalTarget(targetUuid, resolvedName, minecraft);
+        MaskedProfile maskedProfile = forHead
+                ? identityMaskingService.maskForHead(config, local, targetUuid, resolvedName)
+                : identityMaskingService.maskForName(config, local, targetUuid, resolvedName);
+
+        if (maskedProfile.isSameAs(targetUuid, resolvedName)) {
             return null;
         }
 
         return maskedProfile.toGameProfile();
+    }
+
+    private static String resolveRenderableName(UUID targetUuid, String originalName, Minecraft minecraft) {
+        if (originalName != null && !originalName.isBlank()) {
+            return originalName;
+        }
+
+        if (minecraft.getConnection() != null) {
+            for (var info : minecraft.getConnection().getOnlinePlayers()) {
+                UUID infoUuid = ProfileCompat.id(info.getProfile());
+                if (targetUuid.equals(infoUuid)) {
+                    String infoName = ProfileCompat.name(info.getProfile());
+                    if (infoName != null && !infoName.isBlank()) {
+                        return infoName;
+                    }
+                }
+            }
+        }
+
+        User user = minecraft.getUser();
+        if (user != null) {
+            UUID accountUuid = user.getProfileId();
+            if (targetUuid.equals(accountUuid)) {
+                String accountName = user.getName();
+                if (accountName != null && !accountName.isBlank()) {
+                    return accountName;
+                }
+            }
+        }
+
+        return targetUuid.toString().replace("-", "").substring(0, 16);
     }
 
     private static boolean isLocalTarget(UUID targetUuid, String targetName, Minecraft minecraft) {

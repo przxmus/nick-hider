@@ -96,6 +96,8 @@ public final class TextSanitizer {
 
         putReplacement(replacements, originalDashed, maskedDashed);
         putReplacement(replacements, originalDashed.toUpperCase(), maskedDashed.toUpperCase());
+        putReplacement(replacements, originalDashed.substring(0, 8), maskedDashed.substring(0, 8));
+        putReplacement(replacements, originalDashed.substring(0, 8).toUpperCase(), maskedDashed.substring(0, 8).toUpperCase());
         putReplacement(replacements, originalCompact, maskedCompact);
         putReplacement(replacements, originalCompact.toUpperCase(), maskedCompact.toUpperCase());
 
