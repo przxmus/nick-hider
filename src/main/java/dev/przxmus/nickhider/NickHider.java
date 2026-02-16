@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import org.slf4j.Logger;
 import dev.przxmus.nickhider.config.ConfigRepository;
+import dev.przxmus.nickhider.core.IdentityMaskingService;
 import dev.przxmus.nickhider.core.PlayerAliasService;
 import dev.przxmus.nickhider.core.PrivacyRuntimeState;
 import dev.przxmus.nickhider.core.SkinResolutionService;
@@ -25,10 +26,11 @@ public final class NickHider {
 
         ConfigRepository configRepository = new ConfigRepository(configDir.resolve(MOD_ID + ".json"));
         PlayerAliasService aliasService = new PlayerAliasService(configDir.resolve(MOD_ID + "-ids.json"));
+        IdentityMaskingService identityMaskingService = new IdentityMaskingService(aliasService);
         SkinResolutionService skinResolutionService = new SkinResolutionService(configDir.resolve(MOD_ID + "-cache").resolve("skins"));
         TextSanitizer textSanitizer = new TextSanitizer(aliasService);
 
-        runtimeState = new PrivacyRuntimeState(configRepository, aliasService, skinResolutionService, textSanitizer);
+        runtimeState = new PrivacyRuntimeState(configRepository, identityMaskingService, skinResolutionService, textSanitizer);
         runtimeState.reloadConfig();
     }
 

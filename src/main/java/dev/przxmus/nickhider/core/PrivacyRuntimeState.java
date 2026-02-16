@@ -4,6 +4,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.mojang.authlib.GameProfile;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.User;
 import net.minecraft.util.StringUtil;
@@ -16,7 +17,7 @@ public final class PrivacyRuntimeState {
     private static final long SKIN_HOOK_CIRCUIT_BREAKER_MS = 60_000L;
 
     private final ConfigRepository configRepository;
-    private final PlayerAliasService aliasService;
+    private final IdentityMaskingService identityMaskingService;
     private final SkinResolutionService skinResolutionService;
     private final TextSanitizer textSanitizer;
 
@@ -25,12 +26,12 @@ public final class PrivacyRuntimeState {
 
     public PrivacyRuntimeState(
             ConfigRepository configRepository,
-            PlayerAliasService aliasService,
+            IdentityMaskingService identityMaskingService,
             SkinResolutionService skinResolutionService,
             TextSanitizer textSanitizer
     ) {
         this.configRepository = Objects.requireNonNull(configRepository, "configRepository");
-        this.aliasService = Objects.requireNonNull(aliasService, "aliasService");
+        this.identityMaskingService = Objects.requireNonNull(identityMaskingService, "identityMaskingService");
         this.skinResolutionService = Objects.requireNonNull(skinResolutionService, "skinResolutionService");
         this.textSanitizer = Objects.requireNonNull(textSanitizer, "textSanitizer");
     }
@@ -164,15 +165,35 @@ public final class PrivacyRuntimeState {
             return originalName;
         }
 
-        if (isLocalTarget(targetUuid, originalName, minecraft)) {
-            return config.hideLocalName ? config.localName : originalName;
+        boolean local = isLocalTarget(targetUuid, originalName, minecraft);
+        return identityMaskingService.maskForName(config, local, targetUuid, originalName).name();
+    }
+
+    public GameProfile maskProfileForName(UUID targetUuid, String originalName) {
+        return maskProfile(targetUuid, originalName, false);
+    }
+
+    public GameProfile maskProfileForHead(UUID targetUuid, String originalName) {
+        return maskProfile(targetUuid, originalName, true);
+    }
+
+    private GameProfile maskProfile(UUID targetUuid, String originalName, boolean forHead) {
+        PrivacyConfig config = configRepository.get();
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!config.enabled || minecraft.player == null || targetUuid == null || originalName == null || originalName.isBlank()) {
+            return null;
         }
 
-        if (!config.hideOtherNames) {
-            return originalName;
+        boolean local = isLocalTarget(targetUuid, originalName, minecraft);
+        MaskedProfile maskedProfile = forHead
+                ? identityMaskingService.maskForHead(config, local, targetUuid, originalName)
+                : identityMaskingService.maskForName(config, local, targetUuid, originalName);
+
+        if (maskedProfile.isSameAs(targetUuid, originalName)) {
+            return null;
         }
 
-        return config.othersNameTemplate.replace("[ID]", aliasService.getOrCreateShortId(targetUuid));
+        return maskedProfile.toGameProfile();
     }
 
     private static boolean isLocalTarget(UUID targetUuid, String targetName, Minecraft minecraft) {
