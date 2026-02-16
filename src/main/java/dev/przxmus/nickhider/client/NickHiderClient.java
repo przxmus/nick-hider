@@ -6,9 +6,12 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Method;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.commands.Commands;
 import dev.przxmus.nickhider.NickHider;
 /*? if fabric {*/
-/*import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+/*import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 */
@@ -17,6 +20,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 /*? if <1.21.6 {*/
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.client.event.RegisterClientCommandsEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -28,6 +32,7 @@ import net.minecraftforge.fml.ModLoadingContext;
 /*import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 */
@@ -133,9 +138,15 @@ public final class NickHiderClient {
     /*? if fabric {*/
     /*public static void initFabric() {
         KeyBindingHelper.registerKeyBinding(OPEN_CONFIG_KEY);
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
+                dispatcher.register(
+                        ClientCommandManager.literal("nickhider")
+                                .executes(context -> openConfigFromCommand())
+                )
+        );
         ClientTickEvents.END_CLIENT_TICK.register(NickHiderClient::onClientTickFabric);
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> onWorldChange());
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> onWorldChange());
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> onWorldJoin());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> onWorldLeave());
     }
 
     private static void onClientTickFabric(Minecraft minecraft) {
@@ -147,6 +158,7 @@ public final class NickHiderClient {
     public static void initForge(IEventBus modEventBus) {
         modEventBus.addListener(NickHiderClient::onRegisterKeyMappingsForge);
         MinecraftForge.EVENT_BUS.addListener(NickHiderClient::onClientTickForge);
+        MinecraftForge.EVENT_BUS.addListener(NickHiderClient::onRegisterClientCommandsForge);
         MinecraftForge.EVENT_BUS.addListener(NickHiderClient::onLoggingInForge);
         MinecraftForge.EVENT_BUS.addListener(NickHiderClient::onLoggingOutForge);
 
@@ -166,12 +178,19 @@ public final class NickHiderClient {
         }
     }
 
+    private static void onRegisterClientCommandsForge(RegisterClientCommandsEvent event) {
+        event.getDispatcher().register(
+                Commands.literal("nickhider")
+                        .executes(context -> openConfigFromCommand())
+        );
+    }
+
     private static void onLoggingInForge(ClientPlayerNetworkEvent.LoggingIn event) {
-        onWorldChange();
+        onWorldJoin();
     }
 
     private static void onLoggingOutForge(ClientPlayerNetworkEvent.LoggingOut event) {
-        onWorldChange();
+        onWorldLeave();
     }
     /*?}*/
 
@@ -185,6 +204,7 @@ public final class NickHiderClient {
     /*public static void initNeoForge(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(NickHiderClient::onRegisterKeyMappingsNeoForge);
         NeoForge.EVENT_BUS.addListener(NickHiderClient::onClientTickNeoForge);
+        NeoForge.EVENT_BUS.addListener(NickHiderClient::onRegisterClientCommandsNeoForge);
         NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingInNeoForge);
         NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingOutNeoForge);
 
@@ -204,12 +224,19 @@ public final class NickHiderClient {
         }
     }
 
+    private static void onRegisterClientCommandsNeoForge(RegisterClientCommandsEvent event) {
+        event.getDispatcher().register(
+                Commands.literal("nickhider")
+                        .executes(context -> openConfigFromCommand())
+        );
+    }
+
     private static void onLoggingInNeoForge(ClientPlayerNetworkEvent.LoggingIn event) {
-        onWorldChange();
+        onWorldJoin();
     }
 
     private static void onLoggingOutNeoForge(ClientPlayerNetworkEvent.LoggingOut event) {
-        onWorldChange();
+        onWorldLeave();
     }*/
     /*?}*/
 
@@ -217,6 +244,7 @@ public final class NickHiderClient {
     /*public static void initNeoForge(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(NickHiderClient::onRegisterKeyMappingsNeoForge);
         NeoForge.EVENT_BUS.addListener(NickHiderClient::onClientTickNeoForgePost);
+        NeoForge.EVENT_BUS.addListener(NickHiderClient::onRegisterClientCommandsNeoForge);
         NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingInNeoForge);
         NeoForge.EVENT_BUS.addListener(NickHiderClient::onLoggingOutNeoForge);
 
@@ -235,12 +263,19 @@ public final class NickHiderClient {
         tryOpenConfigScreen(Minecraft.getInstance());
     }
 
+    private static void onRegisterClientCommandsNeoForge(RegisterClientCommandsEvent event) {
+        event.getDispatcher().register(
+                Commands.literal("nickhider")
+                        .executes(context -> openConfigFromCommand())
+        );
+    }
+
     private static void onLoggingInNeoForge(ClientPlayerNetworkEvent.LoggingIn event) {
-        onWorldChange();
+        onWorldJoin();
     }
 
     private static void onLoggingOutNeoForge(ClientPlayerNetworkEvent.LoggingOut event) {
-        onWorldChange();
+        onWorldLeave();
     }*/
     /*?}*/
 
@@ -250,14 +285,34 @@ public final class NickHiderClient {
         }
 
         while (OPEN_CONFIG_KEY.consumeClick()) {
-            minecraft.setScreen(new PrivacyConfigScreen(minecraft.screen));
+            openConfigScreen(minecraft);
         }
     }
 
-    private static void onWorldChange() {
+    private static int openConfigFromCommand() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return 0;
+        }
+        minecraft.execute(() -> openConfigScreen(minecraft));
+        return 1;
+    }
+
+    private static void openConfigScreen(Minecraft minecraft) {
+        minecraft.setScreen(new PrivacyConfigScreen(minecraft.screen));
+    }
+
+    private static void onWorldJoin() {
         var runtime = NickHider.runtimeOrNull();
         if (runtime != null) {
-            runtime.onWorldChange();
+            runtime.onWorldJoin();
+        }
+    }
+
+    private static void onWorldLeave() {
+        var runtime = NickHider.runtimeOrNull();
+        if (runtime != null) {
+            runtime.onWorldLeave();
         }
     }
 }

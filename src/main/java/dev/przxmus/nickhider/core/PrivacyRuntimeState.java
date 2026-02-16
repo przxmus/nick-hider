@@ -41,15 +41,16 @@ public final class PrivacyRuntimeState {
 
     public void reloadConfig() {
         configRepository.reload();
-        skinResolutionService.clearRuntimeCache();
+        refreshSkinSourcesAfterConfigChange();
     }
 
     public void saveConfig(PrivacyConfig config) {
         configRepository.save(config);
-        skinResolutionService.clearRuntimeCache();
+        refreshSkinSourcesAfterConfigChange();
     }
 
-    public void refreshSkinCapeNow() {
+    private void refreshSkinSourcesAfterConfigChange() {
+        skinResolutionService.clearRuntimeCache();
         skinResolutionService.forceRefreshSources(configRepository.get());
     }
 
@@ -70,7 +71,7 @@ public final class PrivacyRuntimeState {
         skinHookFailures.set(0);
         skinHookDisabledUntilMs = System.currentTimeMillis() + SKIN_HOOK_CIRCUIT_BREAKER_MS;
         NickHider.LOGGER.warn(
-                "Nick Hider disabled skin/cape overrides for {}ms after repeated hook failures (last hook: {})",
+                "[NH-HOOK-CB] Nick Hider disabled skin/cape overrides for {}ms after repeated hook failures (last hook={})",
                 SKIN_HOOK_CIRCUIT_BREAKER_MS,
                 hook,
                 throwable
@@ -195,8 +196,18 @@ public final class PrivacyRuntimeState {
         return accountName != null && !accountName.isBlank() && targetName.equalsIgnoreCase(accountName);
     }
 
-    public void onWorldChange() {
+    public void onWorldJoin() {
         skinResolutionService.clearRuntimeCache();
+        skinResolutionService.forceRefreshSources(configRepository.get());
+        resetSkinCapeCircuitBreaker();
+    }
+
+    public void onWorldLeave() {
+        skinResolutionService.clearRuntimeCache();
+        resetSkinCapeCircuitBreaker();
+    }
+
+    private void resetSkinCapeCircuitBreaker() {
         skinHookFailures.set(0);
         skinHookDisabledUntilMs = 0L;
     }

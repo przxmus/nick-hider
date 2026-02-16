@@ -37,7 +37,6 @@ public final class PrivacyConfigScreen extends Screen {
     private EditBox othersCapeUserInput;
 
     private Button saveButton;
-    private Button refreshSkinCapeButton;
     private Component validationMessage = CommonComponents.EMPTY;
     private final List<ScrollableWidget> scrollableWidgets = new ArrayList<>();
     private int contentTop;
@@ -73,9 +72,8 @@ public final class PrivacyConfigScreen extends Screen {
         this.formLeft = centerX - (this.formWidth / 2);
 
         int footerY = this.height - 28;
-        int refreshY = footerY - 24;
         this.contentTop = 42;
-        this.contentBottom = Math.max(this.contentTop + 40, refreshY - 16);
+        this.contentBottom = Math.max(this.contentTop + 40, footerY - 16);
 
         int horizontalGap = 10;
         int toggleWidth = (this.formWidth - horizontalGap) / 2;
@@ -166,15 +164,6 @@ public final class PrivacyConfigScreen extends Screen {
 
         this.contentHeight = y;
         this.maxScroll = Math.max(0, this.contentHeight - (this.contentBottom - this.contentTop));
-
-        this.refreshSkinCapeButton = this.addRenderableWidget(Button.builder(Component.translatable("nickhider.config.refresh_skin_cape"), button -> {
-                    var runtime = NickHider.runtimeOrNull();
-                    if (runtime != null) {
-                        runtime.refreshSkinCapeNow();
-                    }
-                })
-                .bounds(this.formLeft, refreshY, this.formWidth, 20)
-                .build());
 
         this.saveButton = this.addRenderableWidget(Button.builder(Component.translatable("nickhider.config.save"), button -> saveAndClose())
                 .bounds(this.formLeft, footerY, (this.formWidth - horizontalGap) / 2, 20)
@@ -287,16 +276,16 @@ public final class PrivacyConfigScreen extends Screen {
 
         int centerX = this.width / 2;
         int footerY = this.height - 28;
-        int refreshY = footerY - 24;
+        int statusY = footerY - 12;
 
         graphics.drawCenteredString(this.font, this.title, centerX, 16, 0xFFFFFF);
 
         String statusSummary = skinCapeStatusSummary();
         Component statusLine = Component.translatable("nickhider.config.skin_cape_status", statusSummary);
-        graphics.drawCenteredString(this.font, statusLine, centerX, refreshY - 12, 0xB0B0B0);
+        graphics.drawCenteredString(this.font, statusLine, centerX, statusY, 0xB0B0B0);
 
         if (!this.validationMessage.getString().isEmpty()) {
-            graphics.drawCenteredString(this.font, this.validationMessage, centerX, refreshY - 24, 0xFF5555);
+            graphics.drawCenteredString(this.font, this.validationMessage, centerX, statusY - 12, 0xFF5555);
         }
 
         if (this.maxScroll > 0) {
