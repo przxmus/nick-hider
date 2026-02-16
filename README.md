@@ -24,6 +24,8 @@ Nick Hider masks player identity details in common vanilla client rendering and 
 
 - Local player: replace your shown name, skin, and cape.
 - Other players: replace names with a template and swap skins/capes from configured source accounts.
+- FTB heads: when FTB Library-based UIs are present (including FTB Teams/Chunks), player heads follow Nick Hider skin masking rules.
+- UUID masking: masked identities use deterministic Minecraft-style UUIDs derived from the final displayed name (`OfflinePlayer:<name>`).
 - Global switch: instantly enable or disable all masking behavior.
 
 ## Quick Start Tutorial
@@ -44,6 +46,8 @@ Nick Hider masks player identity details in common vanilla client rendering and 
 | Local cape        | Replaces your local cape and cape-based elytra texture |
 | Other names       | Template-based replacement with `[ID]` token support   |
 | Other skins/capes | Shared configured source usernames                     |
+| UUID masking      | Deterministic UUID generated from final displayed name |
+| FTB player heads  | FaceIcon-based heads respect local/other skin toggles  |
 | External fallback | Optional `mineskin.eu` + `api.capes.dev` (default: off) |
 | Runtime toggle    | Global `Enable Nick Hider` on/off switch               |
 | Open config       | Keybind + `/nickhider` command                         |
@@ -87,6 +91,9 @@ For exact jar availability per release, use [GitHub Releases](https://github.com
 
 - Replacement usernames must be empty or match `[A-Za-z0-9_]{3,16}`.
 - Local replacement name must match `[A-Za-z0-9_]{3,16}`.
+- UUID masking uses `UUID.nameUUIDFromBytes("OfflinePlayer:<final_displayed_name>")` and does not query Mojang APIs.
+- UUID masking follows name toggles (`Hide Local Name`, `Hide Other Names`).
+- FTB head masking follows skin toggles (`Hide Local Skin`, `Hide Other Skins`) when `FaceIcon`-based UIs are present.
 - If cape masking is enabled but no valid cape source resolves, cape rendering is hidden instead of showing the original cape.
 - External fallbacks are queried only after official skin/cape lookups fail.
 - Saving or reloading config clears runtime cache and starts an automatic source prefetch.
@@ -100,6 +107,8 @@ For exact jar availability per release, use [GitHub Releases](https://github.com
 ## Known Limits
 
 Nick Hider is aggressive on vanilla client paths, but masking is still best-effort. Third-party mods or custom render/UI pipelines can display unmasked data outside covered paths.
+
+FTB integration is implemented through optional `FaceIcon` hooks. If a mod does not use `FaceIcon` for player heads, Nick Hider cannot enforce head masking there.
 
 ## For Developers
 
