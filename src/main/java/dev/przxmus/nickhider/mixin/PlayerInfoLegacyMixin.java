@@ -40,7 +40,7 @@ public abstract class PlayerInfoLegacyMixin {
                     .map(ResolvedSkin::textureLocation)
                     .ifPresent(cir::setReturnValue);
         } catch (Throwable throwable) {
-            nickhider$logHookFailure("getSkinLocation", throwable);
+            nickhider$logLegacyHookFailure("getSkinLocation", throwable);
         }
     }
 
@@ -63,7 +63,7 @@ public abstract class PlayerInfoLegacyMixin {
                     .map(ResolvedSkin::modelName)
                     .ifPresent(cir::setReturnValue);
         } catch (Throwable throwable) {
-            nickhider$logHookFailure("getModelName", throwable);
+            nickhider$logLegacyHookFailure("getModelName", throwable);
         }
     }
 
@@ -87,7 +87,7 @@ public abstract class PlayerInfoLegacyMixin {
                     .map(ResolvedSkin::capeTextureLocation)
                     .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
         } catch (Throwable throwable) {
-            nickhider$logHookFailure("getCapeLocation", throwable);
+            nickhider$logLegacyHookFailure("getCapeLocation", throwable);
         }
     }
 
@@ -111,12 +111,12 @@ public abstract class PlayerInfoLegacyMixin {
                     .map(ResolvedSkin::elytraTextureLocation)
                     .ifPresentOrElse(cir::setReturnValue, () -> cir.setReturnValue(null));
         } catch (Throwable throwable) {
-            nickhider$logHookFailure("getElytraLocation", throwable);
+            nickhider$logLegacyHookFailure("getElytraLocation", throwable);
         }
     }
     /*?}*/
 
-    private static void nickhider$logHookFailure(String hook, Throwable throwable) {
+    private static void nickhider$logLegacyHookFailure(String hook, Throwable throwable) {
         var runtime = NickHider.runtimeOrNull();
         if (runtime != null) {
             runtime.reportSkinCapeHookFailure(hook, throwable);

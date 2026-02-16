@@ -86,7 +86,7 @@ public abstract class PlayerInfoSkinRecordMixin {
 
             cir.setReturnValue(new PlayerSkin(texture, textureUrl, cape, elytra, model, secure));
         } catch (Throwable throwable) {
-            nickhider$logHookFailure("getSkin", throwable);
+            nickhider$logSkinRecordHookFailure("getSkin", throwable);
         }
     }
 
@@ -116,7 +116,7 @@ public abstract class PlayerInfoSkinRecordMixin {
     */
     /*?}*/
 
-    private static void nickhider$logHookFailure(String hook, Throwable throwable) {
+    private static void nickhider$logSkinRecordHookFailure(String hook, Throwable throwable) {
         var runtime = NickHider.runtimeOrNull();
         if (runtime != null) {
             runtime.reportSkinCapeHookFailure(hook, throwable);
