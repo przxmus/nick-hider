@@ -28,7 +28,7 @@ public final class NickHider {
         PlayerAliasService aliasService = new PlayerAliasService(configDir.resolve(MOD_ID + "-ids.json"));
         IdentityMaskingService identityMaskingService = new IdentityMaskingService(aliasService);
         SkinResolutionService skinResolutionService = new SkinResolutionService(configDir.resolve(MOD_ID + "-cache").resolve("skins"));
-        TextSanitizer textSanitizer = new TextSanitizer(aliasService);
+        TextSanitizer textSanitizer = new TextSanitizer(aliasService, identityMaskingService);
 
         runtimeState = new PrivacyRuntimeState(configRepository, identityMaskingService, skinResolutionService, textSanitizer);
         runtimeState.reloadConfig();
