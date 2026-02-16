@@ -44,7 +44,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.StringUtil;
 
 /*? if >=1.21.1 {*/
-/*import net.minecraft.client.resources.PlayerSkin;
+/*import com.mojang.authlib.yggdrasil.ProfileResult;
+import net.minecraft.client.resources.PlayerSkin;
 */
 /*?}*/
 
@@ -69,6 +70,7 @@ public final class SkinResolutionService {
     private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(8);
     private static final Duration LOOKUP_CONNECT_TIMEOUT = Duration.ofSeconds(8);
     private static final Duration SKIN_LOAD_TIMEOUT = Duration.ofSeconds(12);
+    private static final long FAILURE_LOG_THROTTLE_MS = Duration.ofSeconds(45).toMillis();
 
     private static final UUID NIL_UUID = new UUID(0L, 0L);
     private static final AtomicBoolean DEFAULT_SKIN_FALLBACK_WARNED = new AtomicBoolean(false);
@@ -223,6 +225,7 @@ public final class SkinResolutionService {
             return;
         }
 
+        logFetchStarted(normalizedUsername, state);
         CompletableFuture.runAsync(() -> fetchAndStore(normalizedUsername, fallbackUuid, allowExternalFallbacks, state), executor)
                 .whenComplete((unused, throwable) -> {
                     state.inFlight.set(false);
@@ -244,7 +247,7 @@ public final class SkinResolutionService {
                     throw FetchException.internal("NH-SKIN-EMPTY", "Resolved skin is null", false);
                 }
 
-                applySuccess(state, resolved);
+                applySuccess(normalizedUsername, state, resolved, false);
                 return;
             } catch (FetchException ex) {
                 finalFailure = ex.toFailure();
@@ -266,8 +269,7 @@ public final class SkinResolutionService {
         if (allowExternalFallbacks) {
             try {
                 ResolvedSkin external = loadExternalFallback(normalizedUsername, fallbackUuid);
-                applySuccess(state, external);
-                NickHider.LOGGER.info("[NH-SKIN-EXT] Using external fallback skin/cape source for {}", normalizedUsername);
+                applySuccess(normalizedUsername, state, external, true);
                 return;
             } catch (FetchException externalFailure) {
                 finalFailure = externalFailure.toFailure();
@@ -282,13 +284,56 @@ public final class SkinResolutionService {
         applyFailure(normalizedUsername, state, finalFailure);
     }
 
-    private void applySuccess(SourceState state, ResolvedSkin resolved) {
+    private void applySuccess(String normalizedUsername, SourceState state, ResolvedSkin resolved, boolean viaExternalFallback) {
+        boolean recovered;
+        boolean firstSuccess;
+        boolean externalModeChanged;
+        int suppressedFailures;
+
         synchronized (state) {
+            recovered = state.lastErrorCode != ErrorCode.NONE;
+            firstSuccess = state.lastGood == null;
+            externalModeChanged = state.lastSuccessViaExternal != viaExternalFallback;
+            suppressedFailures = state.suppressedFailureLogs;
+
             state.lastGood = resolved;
             state.lastSuccessAtMs = clock.nowMs();
             state.nextRetryAtMs = 0L;
             state.lastErrorCode = ErrorCode.NONE;
             state.consecutiveFailures = 0;
+            state.suppressedFailureLogs = 0;
+            state.lastFailureSignature = "";
+            state.lastFailureLogAtMs = 0L;
+            state.lastSuccessViaExternal = viaExternalFallback;
+            state.lifecycle = FetchLifecycle.SUCCESS;
+        }
+
+        if (viaExternalFallback) {
+            NickHider.LOGGER.info(
+                    "[NH-SKIN-EXT] Using external fallback skin/cape source for {}",
+                    normalizedUsername
+            );
+            return;
+        }
+
+        if (recovered) {
+            if (suppressedFailures > 0) {
+                NickHider.LOGGER.info(
+                        "[NH-SKIN-RECOVERED] Skin/cape source {} recovered after {} throttled failures",
+                        normalizedUsername,
+                        suppressedFailures
+                );
+            } else {
+                NickHider.LOGGER.info(
+                        "[NH-SKIN-RECOVERED] Skin/cape source {} recovered",
+                        normalizedUsername
+                );
+            }
+            return;
+        }
+
+        if (firstSuccess || externalModeChanged) {
+            NickHider.LOGGER.info("[NH-SKIN-READY] Skin/cape source {} is ready", normalizedUsername);
         }
     }
 
@@ -296,6 +341,8 @@ public final class SkinResolutionService {
         long now = clock.nowMs();
         long cooldownMs;
         boolean hasLastGood;
+        int suppressedFailuresToReport = 0;
+        boolean shouldLog;
 
         synchronized (state) {
             int nextFailures = state.consecutiveFailures + 1;
@@ -303,24 +350,58 @@ public final class SkinResolutionService {
             cooldownMs = computeCooldownMs(failure.code(), nextFailures, failure.retryAfterMs());
             state.nextRetryAtMs = now + cooldownMs;
             state.lastErrorCode = failure.code();
+            state.lifecycle = FetchLifecycle.FAILURE;
             hasLastGood = state.lastGood != null;
+
+            String failureSignature = failure.signature();
+            if (failureSignature.equals(state.lastFailureSignature)
+                    && (now - state.lastFailureLogAtMs) < FAILURE_LOG_THROTTLE_MS) {
+                state.suppressedFailureLogs++;
+                shouldLog = false;
+            } else {
+                suppressedFailuresToReport = state.suppressedFailureLogs;
+                state.suppressedFailureLogs = 0;
+                state.lastFailureSignature = failureSignature;
+                state.lastFailureLogAtMs = now;
+                shouldLog = true;
+            }
+            state.lastSuccessViaExternal = false;
+        }
+
+        if (!shouldLog) {
+            return;
         }
 
         long retrySeconds = Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(cooldownMs));
         String lastGoodState = hasLastGood ? "keeping last-known-good" : "no last-known-good";
+        String throttledState = suppressedFailuresToReport > 0
+                ? ", throttled-similar=" + suppressedFailuresToReport
+                : "";
         String detail = failure.detail() == null || failure.detail().isBlank()
                 ? ""
                 : " detail=" + failure.detail();
 
         NickHider.LOGGER.warn(
-                "[{}] Skin/cape fetch failed for {} (error={}, retry={}s, {}{})",
+                "[{}] Skin/cape fetch failed for {} (error={}, retry={}s, {}{}{})",
                 failure.diagnosticCode(),
                 normalizedUsername,
                 failure.code(),
                 retrySeconds,
                 lastGoodState,
+                throttledState,
                 detail
         );
+    }
+
+    private void logFetchStarted(String normalizedUsername, SourceState state) {
+        boolean shouldLog;
+        synchronized (state) {
+            shouldLog = state.lifecycle != FetchLifecycle.FETCHING;
+            state.lifecycle = FetchLifecycle.FETCHING;
+        }
+        if (shouldLog) {
+            NickHider.LOGGER.info("[NH-SKIN-FETCH] Fetching skin/cape for {}", normalizedUsername);
+        }
     }
 
     private void sleepBackoff(int attempt) {
@@ -508,9 +589,25 @@ public final class SkinResolutionService {
     /*? if >=1.21.1 {*/
     /*private ResolvedSkin loadWithSkinManager(Minecraft minecraft, SkinManager skinManager, GameProfile profile, UUID fallbackUuid) throws FetchException {
         try {
-            PlayerSkin playerSkin = skinManager.getOrLoad(profile).get(SKIN_LOAD_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-            if (playerSkin == null) {
-                return defaultSkin(fallbackUuid);
+            MinecraftSessionService sessionService = minecraft.getMinecraftSessionService();
+            if (sessionService == null) {
+                throw FetchException.internal("NH-SKIN-121-MC", "MinecraftSessionService unavailable", true);
+            }
+
+            ProfileResult profileResult = sessionService.fetchProfile(profile.getId(), false);
+            if (profileResult == null || profileResult.profile() == null) {
+                throw FetchException.notFound("NH-SKIN-121-PROFILE", "Session profile lookup returned no data");
+            }
+
+            GameProfile hydratedProfile = profileResult.profile();
+            if (!hydratedProfile.getProperties().containsKey("textures")
+                    || hydratedProfile.getProperties().get("textures").isEmpty()) {
+                throw FetchException.notFound("NH-SKIN-121-TEXTURES", "Session profile has no textures property");
+            }
+
+            PlayerSkin playerSkin = skinManager.getOrLoad(hydratedProfile).get(SKIN_LOAD_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            if (playerSkin == null || playerSkin.texture() == null) {
+                throw FetchException.internal("NH-SKIN-121-SKIN", "SkinManager returned empty player skin", true);
             }
 
             String model = playerSkin.model() != null
@@ -531,6 +628,8 @@ public final class SkinResolutionService {
         } catch (ExecutionException ex) {
             Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
             throw classifyThrowable("NH-SKIN-121", cause);
+        } catch (RuntimeException ex) {
+            throw classifyThrowable("NH-SKIN-121", ex);
         }
     }
     */
@@ -1070,6 +1169,17 @@ public final class SkinResolutionService {
         static FetchFailure internal(String diagnosticCode, String detail, long retryAfterMs, boolean retryable) {
             return new FetchFailure(ErrorCode.INTERNAL, diagnosticCode, detail, retryAfterMs, retryable);
         }
+
+        String signature() {
+            return diagnosticCode + "|" + code;
+        }
+    }
+
+    private enum FetchLifecycle {
+        IDLE,
+        FETCHING,
+        SUCCESS,
+        FAILURE
     }
 
     private static final class SourceState {
@@ -1079,5 +1189,10 @@ public final class SkinResolutionService {
         private long nextRetryAtMs;
         private int consecutiveFailures;
         private ErrorCode lastErrorCode = ErrorCode.NONE;
+        private int suppressedFailureLogs;
+        private String lastFailureSignature = "";
+        private long lastFailureLogAtMs;
+        private boolean lastSuccessViaExternal;
+        private FetchLifecycle lifecycle = FetchLifecycle.IDLE;
     }
 }

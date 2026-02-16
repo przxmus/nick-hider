@@ -123,9 +123,9 @@ public abstract class PlayerInfoSkinRecordMixin {
         }
 
         if (HOOK_FAILURE_LOGGED.compareAndSet(false, true)) {
-            NickHider.LOGGER.warn("Nick Hider skin hook failed in {}; falling back to vanilla behavior", hook, throwable);
+            NickHider.LOGGER.warn("[NH-HOOK-FAIL] Nick Hider skin hook failed in {}; falling back to vanilla behavior", hook, throwable);
         } else {
-            NickHider.LOGGER.debug("Nick Hider skin hook failed in {}", hook, throwable);
+            NickHider.LOGGER.debug("[NH-HOOK-FAIL] Nick Hider skin hook failed in {}", hook, throwable);
         }
     }
 }
