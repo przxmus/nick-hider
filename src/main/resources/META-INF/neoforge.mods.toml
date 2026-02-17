@@ -28,5 +28,12 @@ versionRange = "[${neoforgeVersion},)"
 ordering = "NONE"
 side = "CLIENT"
 
+[[dependencies.${id}]]
+modId = "ftblibrary"
+mandatory = false
+versionRange = "[0,)"
+ordering = "BEFORE"
+side = "CLIENT"
+
 [[mixins]]
 config = "${id}.mixins.json"
