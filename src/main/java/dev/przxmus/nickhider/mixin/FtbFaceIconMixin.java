@@ -53,7 +53,21 @@ public abstract class FtbFaceIconMixin {
             at = @At("RETURN"),
             require = 0
     )
-    private void nickhider$overrideAsyncLoadedFaceSkin(Object loadedSkin, Throwable throwable, CallbackInfo ci) {
+    private void nickhider$overrideAsyncLoadedFaceSkin(CallbackInfo ci) {
+        try {
+            GameProfile profile = nickhider$extractProfile(this);
+            nickhider$applyMaskedTexture(this, profile);
+        } catch (Throwable ex) {
+            nickhider$logFailure(ex);
+        }
+    }
+
+    @Inject(
+            method = "draw(Lnet/minecraft/client/gui/GuiGraphics;IIII)V",
+            at = @At("HEAD"),
+            require = 0
+    )
+    private void nickhider$overrideBeforeDraw(CallbackInfo ci) {
         try {
             GameProfile profile = nickhider$extractProfile(this);
             nickhider$applyMaskedTexture(this, profile);
