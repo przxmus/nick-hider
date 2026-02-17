@@ -96,7 +96,7 @@ For exact jar availability per release, use [GitHub Releases](https://github.com
 - UUID masking follows name toggles (`Hide Local Name`, `Hide Other Names`).
 - UUID masking also covers shortened UUID prefixes commonly shown by some mods (for example only the first 8 hex chars).
 - FTB head masking follows skin toggles (`Hide Local Skin`, `Hide Other Skins`) when `FaceIcon`-based UIs are present.
-- FTB `FaceIcon` head textures are enforced at draw-time, so async skin refreshes in FTB UI paths do not restore original heads while masking is enabled.
+- FTB `FaceIcon` head textures are enforced both on `getFace(...)` and after FTB async skin callbacks, so later async updates do not restore original heads while masking is enabled.
 - When FTB provides a `GameProfile` without a usable player name, Nick Hider resolves the name by UUID and still masks the head profile.
 - If cape masking is enabled but no valid cape source resolves, cape rendering is hidden instead of showing the original cape.
 - External fallbacks are queried only after official skin/cape lookups fail.
