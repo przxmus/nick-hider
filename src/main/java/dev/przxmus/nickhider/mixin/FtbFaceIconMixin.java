@@ -6,11 +6,8 @@ import dev.przxmus.nickhider.core.ProfileCompat;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Collections;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.client.gui.GuiGraphics;
 import org.spongepowered.asm.mixin.Mixin;
@@ -28,7 +25,6 @@ public abstract class FtbFaceIconMixin {
     private static final AtomicBoolean DRAW_MASK_APPLIED_LOGGED = new AtomicBoolean(false);
     private static final AtomicBoolean REFLECTION_FAILURE_LOGGED = new AtomicBoolean(false);
     private static final AtomicBoolean DRAW_HOOK_FAILURE_LOGGED = new AtomicBoolean(false);
-    private static final Map<Object, Object> DRAW_TEXTURE_BY_FACE_ICON = Collections.synchronizedMap(new WeakHashMap<>());
     private static volatile Method faceGetterSingle;
     private static volatile Method faceGetterDual;
     private static volatile Method iconWithUvMethod;
@@ -37,6 +33,7 @@ public abstract class FtbFaceIconMixin {
     private static volatile Field skinField;
     private static volatile Field headField;
     private static volatile Field hatField;
+    private static volatile Field imageIconTextureField;
 
     @Inject(
             method = "getFace(Lcom/mojang/authlib/GameProfile;)Ldev/ftb/mods/ftblibrary/icon/FaceIcon;",
@@ -83,33 +80,25 @@ public abstract class FtbFaceIconMixin {
             String profileName = ProfileCompat.name(profile);
             var replacement = runtime.replacementSkin(profileId, profileName);
             if (replacement.isEmpty()) {
-                DRAW_TEXTURE_BY_FACE_ICON.remove(this);
                 return;
             }
 
             Object textureLocation = replacement.get().textureLocation();
             if (textureLocation == null) {
-                DRAW_TEXTURE_BY_FACE_ICON.remove(this);
                 return;
             }
 
-            Object currentTexture = DRAW_TEXTURE_BY_FACE_ICON.get(this);
+            Object currentTexture = nickhider$currentSkinTexture(this);
             if (Objects.equals(currentTexture, textureLocation)) {
                 return;
             }
 
             if (nickhider$applyFaceTexture(this, textureLocation)) {
-                DRAW_TEXTURE_BY_FACE_ICON.put(this, textureLocation);
                 if (DRAW_MASK_APPLIED_LOGGED.compareAndSet(false, true)) {
                     NickHider.LOGGER.info("[NH-FTB-HOOK] Applied FaceIcon runtime skin override");
                 }
             }
         } catch (Throwable throwable) {
-            var runtime = NickHider.runtimeOrNull();
-            if (runtime != null) {
-                runtime.reportSkinCapeHookFailure("ftb-faceicon-draw", throwable);
-            }
-
             if (DRAW_HOOK_FAILURE_LOGGED.compareAndSet(false, true)) {
                 NickHider.LOGGER.warn("[NH-FTB-HOOK] Failed to apply FaceIcon draw-time skin override", throwable);
             } else {
@@ -293,6 +282,32 @@ public abstract class FtbFaceIconMixin {
 
         Field resolved = faceIcon.getClass().getField("hat");
         hatField = resolved;
+        return resolved;
+    }
+
+    private static Object nickhider$currentSkinTexture(Object faceIcon) throws ReflectiveOperationException {
+        Object skinIcon = nickhider$resolveSkinField(faceIcon).get(faceIcon);
+        if (skinIcon == null) {
+            return null;
+        }
+
+        Class<?> skinClass = skinIcon.getClass();
+        if (!"dev.ftb.mods.ftblibrary.icon.ImageIcon".equals(skinClass.getName())) {
+            return null;
+        }
+
+        Field textureField = nickhider$resolveImageIconTextureField(skinClass);
+        return textureField.get(skinIcon);
+    }
+
+    private static Field nickhider$resolveImageIconTextureField(Class<?> imageIconClass) throws ReflectiveOperationException {
+        Field cached = imageIconTextureField;
+        if (cached != null) {
+            return cached;
+        }
+
+        Field resolved = imageIconClass.getField("texture");
+        imageIconTextureField = resolved;
         return resolved;
     }
 }
