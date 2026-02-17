@@ -1,10 +1,14 @@
 package dev.przxmus.nickhider.core;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.User;
 import net.minecraft.client.multiplayer.PlayerInfo;
@@ -12,6 +16,8 @@ import net.minecraft.client.player.LocalPlayer;
 import dev.przxmus.nickhider.config.PrivacyConfig;
 
 public final class TextSanitizer {
+    private static final Pattern STANDALONE_UUID_PREFIX_PATTERN = Pattern.compile("(?i)\\b[0-9a-f]{8}\\b(?!-)");
+
     private final PlayerAliasService aliasService;
     private final IdentityMaskingService identityMaskingService;
 
@@ -50,7 +56,7 @@ public final class TextSanitizer {
 
         UUID localIdentityUuid = resolveLocalIdentityUuid(minecraft, localPlayer, names);
         Map<String, String> replacements = new LinkedHashMap<>(aliasService.buildReplacementMap(localIdentityUuid, names, config));
-        appendUuidReplacements(replacements, names, localIdentityUuid, config);
+        Map<UUID, UUID> uuidMasks = appendUuidReplacements(replacements, names, localIdentityUuid, config);
 
         List<Map.Entry<String, String>> ordered = replacements.entrySet().stream()
                 .sorted(Comparator.comparingInt((Map.Entry<String, String> e) -> e.getKey().length()).reversed())
@@ -61,15 +67,17 @@ public final class TextSanitizer {
             sanitized = sanitized.replace(entry.getKey(), entry.getValue());
         }
 
+        sanitized = replaceStandaloneUuidPrefixes(sanitized, uuidMasks);
         return sanitized;
     }
 
-    private void appendUuidReplacements(
+    private Map<UUID, UUID> appendUuidReplacements(
             Map<String, String> replacements,
             Map<UUID, String> namesByUuid,
             UUID localIdentityUuid,
             PrivacyConfig config
     ) {
+        Map<UUID, UUID> uuidMasks = new LinkedHashMap<>();
         for (Map.Entry<UUID, String> entry : namesByUuid.entrySet()) {
             UUID originalUuid = entry.getKey();
             String originalName = entry.getValue();
@@ -84,8 +92,11 @@ public final class TextSanitizer {
                 continue;
             }
 
+            uuidMasks.put(originalUuid, maskedUuid);
             addUuidForms(replacements, originalUuid, maskedUuid);
         }
+
+        return uuidMasks;
     }
 
     private static void addUuidForms(Map<String, String> replacements, UUID original, UUID masked) {
@@ -96,14 +107,48 @@ public final class TextSanitizer {
 
         putReplacement(replacements, originalDashed, maskedDashed);
         putReplacement(replacements, originalDashed.toUpperCase(), maskedDashed.toUpperCase());
-        putReplacement(replacements, originalDashed.substring(0, 8), maskedDashed.substring(0, 8));
-        putReplacement(replacements, originalDashed.substring(0, 8).toUpperCase(), maskedDashed.substring(0, 8).toUpperCase());
         putReplacement(replacements, originalCompact, maskedCompact);
         putReplacement(replacements, originalCompact.toUpperCase(), maskedCompact.toUpperCase());
 
         String originalIntArray = uuidToNbtIntArrayString(original);
         String maskedIntArray = uuidToNbtIntArrayString(masked);
         putReplacement(replacements, originalIntArray, maskedIntArray);
+    }
+
+    private static String replaceStandaloneUuidPrefixes(String text, Map<UUID, UUID> uuidMasks) {
+        if (text == null || text.isEmpty() || uuidMasks.isEmpty()) {
+            return text;
+        }
+
+        Map<String, String> lowerPrefixMap = new HashMap<>();
+        for (Map.Entry<UUID, UUID> entry : uuidMasks.entrySet()) {
+            String originalPrefix = entry.getKey().toString().substring(0, 8);
+            String maskedPrefix = entry.getValue().toString().substring(0, 8);
+            if (!originalPrefix.equals(maskedPrefix)) {
+                lowerPrefixMap.put(originalPrefix, maskedPrefix);
+            }
+        }
+
+        if (lowerPrefixMap.isEmpty()) {
+            return text;
+        }
+
+        Matcher matcher = STANDALONE_UUID_PREFIX_PATTERN.matcher(text);
+        StringBuffer out = new StringBuffer(text.length());
+        while (matcher.find()) {
+            String token = matcher.group();
+            String replacement = lowerPrefixMap.get(token.toLowerCase(Locale.ROOT));
+            if (replacement == null) {
+                matcher.appendReplacement(out, Matcher.quoteReplacement(token));
+                continue;
+            }
+
+            boolean allUpper = token.equals(token.toUpperCase(Locale.ROOT));
+            String normalizedReplacement = allUpper ? replacement.toUpperCase(Locale.ROOT) : replacement;
+            matcher.appendReplacement(out, Matcher.quoteReplacement(normalizedReplacement));
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     private static String uuidToNbtIntArrayString(UUID uuid) {
